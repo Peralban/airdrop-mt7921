@@ -3439,3 +3439,43 @@ within the last couple of seconds, and the two callers that run *after* opendrop
 has exited pass `AIRDROP_TIDY_SETTLE=0` because at that point nothing can be
 writing and the guard would only skip the last transfer - the one they exist to
 sweep.
+
+## §50 — contacts-only needs three secrets, not one, so harvesting the phone's record cannot work (2026-09-09)
+
+**Negative result, recorded so nobody builds the obvious thing.** Everyone-mode
+is not a limitation we can code around from this side.
+
+The idea was tempting and wrong. Every transfer the phone sends us carries
+`SenderRecordData` — a genuine, Apple-signed Apple ID validation record for the
+*user's own* Apple ID, complete with their `ValidatedEmailHashes`. It is sitting
+in `~/.opendrop/debug/receive_ask_request.plist` right now. OpenDrop will happily
+send whatever is in `~/.opendrop/keys/validation_record.cms` back out as
+`ReceiverRecordData` (`server.py`, in the `/Discover` answer). So: harvest the
+record off each incoming transfer, self-renewing, no Apple hardware needed.
+
+**It cannot work, because the record is not a bearer token.** seemoo-lab's
+[`airdrop-keychain-extractor`](https://github.com/seemoo-lab/airdrop-keychain-extractor)
+extracts **three** files, and contacts-only needs all of them:
+
+| file | what it is | can we get it? |
+|---|---|---|
+| `validation_record.cms` | the Apple-signed record | **yes** — the phone sends it to us on every transfer |
+| `certificate.pem` | the Apple-issued client cert the record is bound to | no |
+| `key.pem` | that cert's private key | **never** — it does not leave the device |
+
+The receiver validates the record *against the TLS identity presenting it*. Ours
+is self-signed — `config.py:create_default_key()` generates it with `openssl req
+-x509` on first run — so a replayed record is inert no matter how fresh. Only
+the private key half is unobtainable, which is exactly the half that matters.
+
+Two smaller nails: the record expires (`ValidAsOf` + `SuggestValidDuration`,
+observed as 30 days), and OpenDrop never verifies an *incoming* record at all,
+so there is nothing in the codebase to read the real check off — only a live
+test with a phone would tell us, and the extractor's file list already has.
+
+**The Mac route is real but expensive**, and needs no code here: OpenDrop already
+reads all three from `~/.opendrop/keys/`, so it is a copy job. The cost is on the
+Mac — SIP disabled from Recovery, booted with `amfi_get_out_of_my_way=1`, the
+extractor built and signed with an Apple developer certificate, and the Mac
+signed into *the same* Apple ID whose contact the phone will match. A managed or
+borrowed Mac fails on both counts. Repeat when the record expires.
