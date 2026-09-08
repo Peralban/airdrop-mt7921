@@ -3463,19 +3463,47 @@ extracts **three** files, and contacts-only needs all of them:
 | `certificate.pem` | the Apple-issued client cert the record is bound to | no |
 | `key.pem` | that cert's private key | **never** — it does not leave the device |
 
-The receiver validates the record *against the TLS identity presenting it*. Ours
-is self-signed — `config.py:create_default_key()` generates it with `openssl req
--x509` on first run — so a replayed record is inert no matter how fresh. Only
-the private key half is unobtainable, which is exactly the half that matters.
+What proves possession is the certificate, not the record, and ours is
+self-signed — `config.py:create_default_key()` generates it with `openssl req
+-x509` on first run. So a harvested record on its own is inert no matter how
+fresh: nothing vouches for the box presenting it. Only the private key half is
+unobtainable, which is exactly the half that matters.
 
-Two smaller nails: the record expires (`ValidAsOf` + `SuggestValidDuration`,
-observed as 30 days), and OpenDrop never verifies an *incoming* record at all,
-so there is nothing in the codebase to read the real check off — only a live
-test with a phone would tell us, and the extractor's file list already has.
+**But the record carries no device binding at all**, and that changes the shape
+of the problem. Decoded, the phone's is the entire payload:
+
+```
+Version 2, altDsID/encDsID 001641-08-…, SuggestValidDuration 2592000,
+ValidAsOf 2026-08-09T12:34:18Z, ValidatedEmailHashes [94ad01…], ValidatedPhoneHashes []
+```
+
+No certificate reference, no public key, no device identifier — it attests
+"**this Apple ID** owns this email hash", and nothing narrower. Whether the peer
+cross-checks `encDsID` against the certificate's subject or ignores the cert
+entirely, **a record from any device on the same Apple ID satisfies it**: the
+phone's `encDsID` and a Mac's are the same string.
+
+So the recurring 30-day cost lands on the *record*, which is the one piece we can
+get without Apple hardware. Extract `certificate.pem` and `key.pem` from a Mac
+**once**, then keep `validation_record.cms` current by harvesting
+`SenderRecordData` off each incoming transfer. The Mac is only needed again if
+the certificate itself expires — lifetime unmeasured here, but it is not 30 days,
+and the extractor pulls it from an *iCloud-keychain* Apple ID identity (a private
+key, a certificate and an intermediate, by persistent reference), i.e. an
+account-scoped identity rather than a per-Mac one.
+
+**Unverified, and only a phone can settle it:** that the peer accepts a record
+whose `encDsID` matches the certificate's Apple ID but which was minted for a
+different device on that account.
+
+OpenDrop never verifies an *incoming* record at all, so there is nothing in the
+codebase to read the real check off — the extractor's file list is the evidence,
+not our own code.
 
 **The Mac route is real but expensive**, and needs no code here: OpenDrop already
 reads all three from `~/.opendrop/keys/`, so it is a copy job. The cost is on the
 Mac — SIP disabled from Recovery, booted with `amfi_get_out_of_my_way=1`, the
 extractor built and signed with an Apple developer certificate, and the Mac
 signed into *the same* Apple ID whose contact the phone will match. A managed or
-borrowed Mac fails on both counts. Repeat when the record expires.
+borrowed Mac fails on both counts. Needed once, not monthly, if the record
+harvest above holds up.
