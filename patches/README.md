@@ -80,6 +80,33 @@ Each was found by hitting it in a live run on 2026-07-31 - see ../docs/FINDINGS.
 Verified end to end: a 2.06 MB transfer decoded to 17 blocks consuming the file
 exactly, yielding `IMG_8276.JPG`, a 4032x3024 JPEG.
 
+## opendrop-url-items.patch
+
+Delivers an AirDropped **link**. Adds `ask_items()` and `open_url()` to
+`server.py`, names the URL in the consent prompt, and opens it after the user
+accepts.
+
+Sharing a link is not a file transfer. iOS puts the URL in the `/Ask` body's
+`Items` array, leaves `Files` empty and **never sends an `/Upload`** - it treats
+our 200 on `/Ask` as the whole transfer. Stock OpenDrop only ever looks at
+`Files`, so a shared link produced a successful-looking share on the phone, an
+"accept 0 files" prompt here, and nothing on disk. `/Ask` is therefore the only
+place a URL can be delivered from, which is why this hooks the handler rather
+than the receive directory.
+
+The URL goes to `AIRDROP_URL_HOOK` (`daemon/airdrop-url`, which opens Firefox),
+or `xdg-open` if that is unset. Two deliberate choices:
+
+- **Only after consent.** The open call sits below the `_ask_user` check, so a
+  declined share opens nothing.
+- **Detached, never blocking.** The `/Ask` response is what tells the phone the
+  share worked; waiting on a browser start would stall it into a timeout. The
+  hook is `Popen`'d in a new session and its result is not waited for.
+
+Scheme filtering happens twice on purpose - `http(s)` only in `ask_items()`, and
+again in `airdrop-url`. The caller is an unauthenticated network peer, and the
+hook is reachable on its own, so neither layer gets to assume the other ran.
+
 ## opendrop-recv-window.patch
 
 Two correctness fixes around the receive path. **Neither improves throughput** -

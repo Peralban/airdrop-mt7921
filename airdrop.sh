@@ -188,7 +188,12 @@ if [ "$MODE" = "receive" ]; then WATCHDOG_TIMEOUT=$((RECV_TIME + 420)); else WAT
 MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
 # OWL binary and the OpenDrop venv. Point OWL_DIR at your owl checkout (the
 # patched fork - see README) or set OWL/OPENDROP directly.
-OWL_DIR="${OWL_DIR:-$HOME/owl}"
+if [ -z "${OWL_DIR:-}" ]; then
+  for _d in "$HOME/owl" "$(dirname "$HERE")/owl"; do
+    [ -x "$_d/build/daemon/owl" ] && { OWL_DIR="$_d"; break; }
+  done
+  OWL_DIR="${OWL_DIR:-$HOME/owl}"
+fi
 OWL="${OWL:-$OWL_DIR/build/daemon/owl}"
 OPENDROP="${OPENDROP:-$OWL_DIR/.venv-opendrop/bin/opendrop}"
 # Where per-run logs and captures land.

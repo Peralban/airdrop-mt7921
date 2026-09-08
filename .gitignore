@@ -1,3 +1,4 @@
 runs/
 *.pcap
 receive.log
+.claude/worktrees/

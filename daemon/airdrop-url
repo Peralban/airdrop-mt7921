@@ -1,0 +1,33 @@
+#!/bin/bash
+# Opens a link received over AirDrop. Called by the patched OpenDrop server as
+#   airdrop-url <url>
+# once the user has accepted the share (see patches/opendrop-url-items.patch).
+#
+# Split out of the patch so the browser choice is configuration, not a code
+# change inside a vendored site-packages file: set AIRDROP_BROWSER to override.
+set -u
+
+URL="${1:-}"
+[ -n "$URL" ] || exit 1
+
+# The caller is a network peer. Anything but http(s) hands a stranger a scheme
+# handler - file://, and on some desktops far worse - so refuse everything else
+# rather than trusting the browser to be sensible about it.
+case "$URL" in
+  http://*|https://*) ;;
+  *) notify-send -a AirDrop "AirDrop: link refused" "Not an http(s) URL: $URL" 2>/dev/null; exit 1 ;;
+esac
+
+BROWSER="${AIRDROP_BROWSER:-firefox}"
+command -v "$BROWSER" >/dev/null 2>&1 || BROWSER=xdg-open
+
+# --new-tab keeps an existing window and does not steal a whole workspace; it
+# is silently ignored by xdg-open, which takes the URL alone.
+if [ "$BROWSER" = "xdg-open" ]; then
+  setsid "$BROWSER" "$URL" >/dev/null 2>&1 &
+else
+  setsid "$BROWSER" --new-tab "$URL" >/dev/null 2>&1 &
+fi
+
+notify-send -a AirDrop "AirDrop: link received" "$URL" 2>/dev/null
+exit 0

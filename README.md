@@ -100,6 +100,12 @@ git clone https://github.com/jedbillyb/owl.git ~/owl
 cd ~/owl && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ```
 
+`~/owl` is the default, but a checkout sitting beside this repo is found too, so
+`projects/owl` next to `projects/airdrop-mt7921` needs no configuration. Anywhere
+else, set `OWL_DIR`. A missing OWL binary makes `airdropd run` exit before it
+opens its log, so the only trace is `missing or not executable` on stderr that
+the waybar toggle throws away - the bar just falls straight back to `drop off`.
+
 **2. Install and patch OpenDrop.** Stock OpenDrop cannot complete an iOS 26
 transfer in either direction. The patches are applied in order, in place, inside
 the venv - see [patches/README.md](patches/README.md) for what each one does and
@@ -109,13 +115,21 @@ why:
 python -m venv ~/owl/.venv-opendrop
 ~/owl/.venv-opendrop/bin/pip install opendrop
 cd ~/owl/.venv-opendrop/lib/python*/site-packages
-for p in ios26-airdrop recv-window py314-send mdns-repeat find-report \
+for p in ios26-airdrop recv-window url-items py314-send mdns-repeat find-report \
          tls-keylog upload-arms; do
   git apply /path/to/airdrop-mt7921/patches/opendrop-$p.patch
 done
 ```
 
-The first two make **receiving** work; the rest make **sending** work
+`pip install 'setuptools<81'` into that venv as well. OpenDrop 0.13.0 imports
+`pkg_resources` at module scope, Python 3.12+ venvs no longer ship setuptools,
+and setuptools 81 removed `pkg_resources` outright - so on a modern Python the
+receiver dies with `ModuleNotFoundError: No module named 'pkg_resources'` before
+it opens a socket. Through the daemon that surfaces as `receiver never started
+listening`, with the traceback only in the log.
+
+The first two make **receiving** work, `url-items` adds received **links** (see
+[Receiving a link](#receiving-a-link)), and the rest make **sending** work
 (`py314-send` unbreaks the send path on modern Python, `mdns-repeat` gets the
 phone to answer, `find-report` hands the receiver to `send`, `tls-keylog` makes
 failures decryptable, and `upload-arms` carries the `TransferID` fix that
@@ -171,6 +185,25 @@ RECEIVER="Jed's iPhone" ./airdrop.sh send photo.jpg
 ```
 
 Files land in `~/Downloads`. Per-run logs and captures go to `./runs/`.
+
+### Receiving a link
+
+A shared **link** does not arrive as a file. iOS puts the URL in the `/Ask`
+body and never sends an upload, so nothing lands in `RECV_DIR` - the link is
+opened directly instead, in Firefox, once you accept the same prompt a file
+transfer raises. Send it from the phone exactly like a file: share sheet ->
+AirDrop -> **void-btw**.
+
+Where it goes is configurable without touching the patch:
+
+```sh
+AIRDROP_BROWSER=chromium ...        # a different browser
+AIRDROP_URL_HOOK=/path/to/script    # or do something else entirely
+```
+
+`daemon/airdrop-url` accepts `http`/`https` only. The URL comes from an
+unauthenticated network peer, so handing it to a browser unfiltered would hand
+a stranger every scheme handler on the box.
 
 ### What lands on disk
 

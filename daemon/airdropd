@@ -46,7 +46,21 @@ HELPER="${AIRDROP_HELPER:-/usr/local/bin/airdrop-helper}"
 BLE_WATCH="${AIRDROP_BLE_WATCH:-/usr/local/bin/airdrop-ble-watch}"
 [ -x "$BLE_WATCH" ] || BLE_WATCH="$HERE/ble-watch"
 CONFIRM="${AIRDROP_CONFIRM:-$HERE/airdrop-confirm}"
-OWL_DIR="${OWL_DIR:-$HOME/owl}"
+# Where a received LINK goes. AirDrop delivers a shared URL in the /Ask body
+# rather than as a file, so it never reaches RECV_DIR and needs its own
+# handler - this one opens it in a browser. Unset AIRDROP_URL_HOOK to fall
+# back to xdg-open, or point it elsewhere to do something other than browse.
+URL_HOOK="${AIRDROP_URL_HOOK:-$HERE/airdrop-url}"
+# The owl checkout. $HOME/owl is the historical default, but the checkout is
+# just as likely to sit beside this repo (both live under a projects dir), and
+# a missing owl binary is a start failure with no log to read, so try the
+# sibling before giving up. OWL_DIR still wins if set.
+if [ -z "${OWL_DIR:-}" ]; then
+  for _d in "$HOME/owl" "$(dirname "$REPO")/owl"; do
+    [ -x "$_d/build/daemon/owl" ] && { OWL_DIR="$_d"; break; }
+  done
+  OWL_DIR="${OWL_DIR:-$HOME/owl}"
+fi
 OWL="${OWL:-$OWL_DIR/build/daemon/owl}"
 OPENDROP="${OPENDROP:-$OWL_DIR/.venv-opendrop/bin/opendrop}"
 RECV_DIR="${RECV_DIR:-$HOME/Downloads}"
@@ -766,7 +780,7 @@ serve_window() {
   # AIRDROP_CONFIRM is what makes the patched handle_ask prompt. Without it
   # opendrop accepts silently, which is precisely what must not happen when
   # this is running unattended.
-  ( cd "$RECV_DIR" && AIRDROP_CONFIRM="$CONFIRM" \
+  ( cd "$RECV_DIR" && AIRDROP_CONFIRM="$CONFIRM" AIRDROP_URL_HOOK="$URL_HOOK" \
       timeout "$WINDOW" "$OPENDROP" -i awdl0 receive ) >> "$LOG" 2>&1 &
   OD_PID=$!
   wait "$OD_PID" 2>/dev/null
@@ -807,7 +821,8 @@ serve_forever() {
     # payload - there is no TotalBytes to compare against. PYTHONUNBUFFERED so
     # the lines reach the log file as they happen rather than sitting in an
     # 8 KiB block buffer, which matters when reading it live during a transfer.
-    ( cd "$RECV_DIR" && AIRDROP_CONFIRM="$CONFIRM" PYTHONUNBUFFERED=1 \
+    ( cd "$RECV_DIR" && AIRDROP_CONFIRM="$CONFIRM" AIRDROP_URL_HOOK="$URL_HOOK" \
+        PYTHONUNBUFFERED=1 \
         OPENDROP_ANNOUNCE_INTERVAL="$REANNOUNCE" \
         "$OPENDROP" -d -i awdl0 receive ) >> "$LOG" 2>&1 &
     OD_PID=$!
