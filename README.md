@@ -174,6 +174,22 @@ Measured on this hardware, sweeping all five AWDL social channels:
 So Control Centre is not enough, and a phone sitting locked on a desk is
 invisible no matter what AirDrop is set to.
 
+### Sending from the file manager
+
+`airdrop.sh send` owns the radio, so it cannot run while the waybar toggle is
+on. `airdropd send` can - it attaches to the running stack instead of building
+its own - and that is what the Thunar right-click uses:
+
+```sh
+sudo ln -s "$PWD/daemon/airdrop-send" /usr/local/bin/airdrop-send  # symlink, not a copy
+thunar -q                                                          # it rewrites uca.xml on exit
+tools/install-thunar-action.sh                                     # --remove undoes it
+```
+
+Then select any files, right-click, **Send via AirDrop**. Progress arrives as
+notifications, because a custom action has no terminal to print into. Full
+detail in [`daemon/README.md`](daemon/README.md).
+
 ### Which phone am I sending to?
 
 `AirDrop → Everyone` makes *every* Apple device in range a candidate, and the
