@@ -376,8 +376,22 @@ end in 949,265 null bytes, so comparing sizes detects nothing at all. Anything
 incomplete is suffixed `.partial`; quietly handing back a half-empty photo that
 still opens would be worse than a clean failure.
 
-It also puts a timeout on socket reads, at the **handler class** rather than on
-`/Upload` alone. `_next_chunk` blocked in `readline()` with no deadline, so a
+**The read timeout follows the link's rhythm rather than being a constant.** A
+flat 30 s was added to every salvaged transfer - thirty seconds of nothing out
+of forty-three, measured. Shortening it blindly would cut off a merely slow
+transfer, so the first attempt keyed a short tier off nearness to `TotalBytes`.
+That assumes the sender stops at the edge, which is false: measured stops range
+from 440 bytes to 943,642 bytes short, 0.03% to 24%. No threshold covers both.
+
+So it no longer guesses where the end is. It watches the gap between successful
+reads and arms the timeout at six times the worst gap seen, clamped to 8-30 s
+(`AIRDROP_STALL_FLOOR`, `AIRDROP_STALL_TIMEOUT`). A steady link drops to the
+floor within seconds; a choppy one lets the timeout climb on its own, and the
+ceiling is the old value, so it can never wait *longer* than before. Verified
+live: a worst gap of 3.2 s gave 19 s instead of 30 on a 6 MB photo that arrived
+complete - and a fixed 8 s tier would have cut that one off.
+
+The timeout sits on the **handler class** rather than on `/Upload` alone. `_next_chunk` blocked in `readline()` with no deadline, so a
 phone that went quiet froze the loop forever and even the bytes already
 received stayed in the buffer. The class-level placement is what matters:
 `handle_ask` reads its request body *before* calling the consent hook, so a
