@@ -343,3 +343,44 @@ zlib forms.
 properly - it sends the header and then the body without waiting for the 100.
 The header is present on the wire, which is what the arm tests, but if the phone
 requires a real wait this arm understates the case.
+
+
+## opendrop-zeroconf-update-service.patch
+
+`AirDropBrowser` defines `add_service` and `remove_service` but not
+`update_service`, which python-zeroconf has required on a listener since 0.3x.
+The call raises `AttributeError` **inside the ServiceBrowser thread**, which
+kills it. Nothing surfaces from outside: the process stays up, the listener
+object is still there, and discovery simply never reports anything again.
+
+The failure is worse than a missing stub usually is, because a device that
+re-announces itself fires `update` rather than `add` - and re-announcing is
+exactly what the peer you are waiting for does. So the one event that matters
+is the one that takes the thread down.
+
+Reports an update the same way as an add.
+
+
+## opendrop-salvage-truncated.patch
+
+An interrupted transfer was discarded whole. Over 17 interrupted transfers on
+one MT7922, **13 already contained the complete file** and had lost only the
+container's terminator: the extracted JPEG matched the sender's sha256 exactly.
+Reception went from about half the attempts to 12 of 12 across an evening, on
+the same radio and the same link.
+
+The patch keeps those bytes and **verifies** what it returns. The check walks
+the ODC cpio structure by hand, because libarchive **zero-pads** a truncated
+member out to its declared size - a file can be exactly the right length and
+end in 949,265 null bytes, so comparing sizes detects nothing at all. Anything
+incomplete is suffixed `.partial`; quietly handing back a half-empty photo that
+still opens would be worse than a clean failure.
+
+It also puts a timeout on socket reads, at the **handler class** rather than on
+`/Upload` alone. `_next_chunk` blocked in `readline()` with no deadline, so a
+phone that went quiet froze the loop forever and even the bytes already
+received stayed in the buffer. The class-level placement is what matters:
+`handle_ask` reads its request body *before* calling the consent hook, so a
+peer stalling there hung with no prompt on screen and nothing in the log.
+
+Applied last, since it touches `server.py` after every other patch has.
