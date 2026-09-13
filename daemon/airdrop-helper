@@ -343,7 +343,22 @@ EOF
     # while OWL logged ten switches to 149 and ten back. So we advertise exactly
     # the peer's slots that sit on our channel and leave the rest empty: true,
     # and structurally like a real sequence.
-    strategy="${AIRDROP_OWL_STRATEGY:-intersect}"
+    # The strategy may also come from a file in the CALLER's home. airdropd
+    # invokes this helper through `sudo -n` WITHOUT -E, so an environment
+    # variable never crosses the privilege boundary: AIRDROP_OWL_STRATEGY is
+    # unsettable in practice for anyone driving the daemon rather than running
+    # this script by hand. Reinstalling the root binary to try another value
+    # is not a reasonable way to run an experiment.
+    #
+    # The value is validated against the allowlist below before any use, so a
+    # user-writable file can only pick among names that are already allowed -
+    # it cannot inject anything. Default unchanged.
+    strategy="${AIRDROP_OWL_STRATEGY:-}"
+    if [ -z "$strategy" ] && [ -n "${SUDO_USER:-}" ]; then
+      _sf=$(getent passwd "$SUDO_USER" | cut -d: -f6)/.config/airdrop/strategy
+      [ -r "$_sf" ] && strategy=$(head -c 16 "$_sf" | tr -dc 'a-z')
+    fi
+    strategy="${strategy:-intersect}"
     case "$strategy" in
       pin|verbatim|fixed|intersect|widen|rotate) ;;
       *) echo "airdrop-helper: bad strategy $strategy" >&2; exit 1 ;;
