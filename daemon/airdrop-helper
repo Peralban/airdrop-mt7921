@@ -19,12 +19,11 @@
 # /etc/sudoers.d/zzz-swaylock-fp-restart entry.
 set -u
 
-PHY="${PHY:-phy0}"
+PHY="${PHY:-}"
 IFACE="${IFACE:-}"
 MON=mon0
 MONA=mon1
 GO=go0
-MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
 GO_HOSTAPD=/usr/local/bin/airdrop-go-hostapd
 GO_CONF=/run/airdrop-go-hostapd.conf
 GO_LOG=/run/airdrop-go-hostapd.log
@@ -55,6 +54,24 @@ if [ -z "$IFACE" ]; then
     esac
   done
 fi
+
+# The phy that carries this interface. The default used to be a hardcoded
+# phy0, which breaks as soon as the driver has been reloaded - the card comes
+# back as phy1 - or on any machine with a second radio. `iw phy phy0 interface
+# add` then exits ENOENT, which the daemon reports as "no privilege or go0
+# setup failed", sending you to look at sudoers for a fault that is not there.
+# airdrop.sh already derives it from the interface; do the same here.
+if [ -z "$PHY" ] && [ -n "$IFACE" ]; then
+  PHY=$(basename "$(readlink -f "/sys/class/net/$IFACE/phy80211")" 2>/dev/null)
+fi
+PHY="${PHY:-phy0}"
+
+# AFTER $PHY is final, not before. Assigned at the top it interpolated an
+# empty PHY and produced `ieee80211//mt76`, a path that never exists - so
+# every runtime-pm and deep-sleep workaround below was skipped in silence.
+# That is exactly the "the monitor captures nothing" failure the README
+# documents, and it looks like a hardware problem rather than a typo.
+MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
 
 usage() {
   cat >&2 <<'EOF'
