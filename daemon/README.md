@@ -129,13 +129,12 @@ Check it took:
 sudo -n /usr/local/bin/airdrop-helper status
 ```
 
-**3. Apply the confirmation patch** (Void has no `patch(1)` — use `git apply`):
-
-```sh
-cd ~/owl/.venv-opendrop/lib/python3.14/site-packages
-git apply --unsafe-paths --directory=. \
-  /mnt/shared/projects/airdrop-mt7921/patches/opendrop-ask-confirm.patch
-```
+**3. Patch OpenDrop.** The daemon's three patches (`ask-confirm` for the
+confirmation prompt, `mdns-reannounce`, `threaded-server`) are part of the
+single eleven-patch loop in the [main README](../README.md), step 2. Use that
+loop on a clean OpenDrop 0.13.0. Do not apply `ask-confirm` on its own: the
+patches are a series, and applying one out of order leaves the later ones
+unable to apply.
 
 **4. waybar module.** Symlink it like the other modules on this box:
 

@@ -1,8 +1,8 @@
 --- a/opendrop/server.py
 +++ b/opendrop/server.py
-@@ -109,6 +109,28 @@
-         if self.config.interface == "awdl0" and platform.system() == "Darwin":
-             httpd.socket.setsockopt(socket.SOL_SOCKET, 0x1104, 1)
+@@ -127,6 +127,28 @@ class AirDropServer:
+         properties = {b"flags": str(self.config.flags).encode("utf-8")}
+         return properties
  
 +        # Pin a large receive buffer, inherited by accepted connections.
 +        #
@@ -27,9 +27,9 @@
 +        except OSError as e:
 +            logger.warning(f"Could not enlarge the receive buffer ({e})")
  
-         httpd.socket = self.config.get_ssl_context().wrap_socket(
-             sock=httpd.socket, server_side=True
-@@ -284,12 +306,6 @@
+ class HTTPServerV6(HTTPServer):
+     address_family = socket.AF_INET6
+@@ -283,12 +305,6 @@ class AirDropServerHandler(BaseHTTPRequestHandler):
              self.end_headers()
              return
  
@@ -42,7 +42,7 @@
          if self.headers.get("transfer-encoding", "").lower() != "chunked":
              logger.warning("Expect chunked transfer encoding")
              self.send_response(400)  # Bad Request
-@@ -375,6 +391,17 @@
+@@ -374,6 +390,17 @@ class AirDropServerHandler(BaseHTTPRequestHandler):
              os.getcwd(), f"airdrop-received-{int(start)}.{'dvzip' if 'dvzip' in self.headers.get('content-type', '') else 'cpio'}"
          )
          with open(raw_path, "wb") as raw:

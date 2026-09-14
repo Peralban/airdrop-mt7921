@@ -113,13 +113,19 @@ why:
 
 ```sh
 python -m venv ~/owl/.venv-opendrop
-~/owl/.venv-opendrop/bin/pip install opendrop
+~/owl/.venv-opendrop/bin/pip install opendrop==0.13.0
 cd ~/owl/.venv-opendrop/lib/python*/site-packages
-for p in ios26-airdrop recv-window url-items py314-send mdns-repeat find-report \
-         tls-keylog upload-arms; do
-  git apply /path/to/airdrop-mt7921/patches/opendrop-$p.patch
+for p in ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog \
+         upload-arms ask-confirm mdns-reannounce threaded-server url-items; do
+  git apply /path/to/airdrop-mt7921/patches/opendrop-$p.patch || break
 done
 ```
+
+The patches are a series: each one is made against the result of the ones
+before it, so apply all eleven, in exactly this order, to a clean OpenDrop
+0.13.0. `url-items` in particular will not apply without the three daemon
+patches ahead of it. If a `git apply` fails, rebuild the venv rather than
+retrying on a half-patched tree.
 
 `pip install 'setuptools<81'` into that venv as well. OpenDrop 0.13.0 imports
 `pkg_resources` at module scope, Python 3.12+ venvs no longer ship setuptools,
@@ -133,8 +139,10 @@ The first two make **receiving** work, `url-items` adds received **links** (see
 (`py314-send` unbreaks the send path on modern Python, `mdns-repeat` gets the
 phone to answer, `find-report` hands the receiver to `send`, `tls-keylog` makes
 failures decryptable, and `upload-arms` carries the `TransferID` fix that
-delivers the file). Void has no `patch(1)`; `git apply` is what the patches are
-verified against.
+delivers the file). `ask-confirm`, `mdns-reannounce` and `threaded-server` are
+what the always-on daemon needs (the accept prompt, staying visible, and not
+wedging on iOS keep-alive; see [daemon/README.md](daemon/README.md)). Void has
+no `patch(1)`; `git apply` is what the patches are verified against.
 
 **3. Run it.**
 

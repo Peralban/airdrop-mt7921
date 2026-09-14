@@ -12,6 +12,22 @@ git apply /path/to/airdrop-mt7921/patches/opendrop-ios26-airdrop.patch
 (Void has no `patch(1)` installed; `git apply` works and the patch is verified
 against it.)
 
+**They are a series, not a menu.** Each patch is made against OpenDrop 0.13.0
+with every earlier patch already applied, so they only apply in this order:
+
+```
+ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
+upload-arms ask-confirm mdns-reannounce threaded-server url-items
+```
+
+The install loop in the [main README](../README.md) uses exactly that order.
+Verified 2026-09-14: all eleven apply with plain `git apply` to a clean
+`opendrop==0.13.0` from PyPI, and the result compiles. Before that date
+`recv-window` and `threaded-server` only applied with reduced context, and
+`mdns-reannounce` did not apply at all (one hunk had turned a blank context
+line into an added one). A new patch must be generated against the tip of
+this series and added to the end of both lists.
+
 ## opendrop-threaded-server.patch
 
 Makes `HTTPServerV6` subclass `ThreadingHTTPServer` (with `daemon_threads`)

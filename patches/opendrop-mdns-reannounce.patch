@@ -1,6 +1,6 @@
 --- a/opendrop/server.py
 +++ b/opendrop/server.py
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,7 @@ import platform
  import plistlib
  import socket
  import struct
@@ -8,7 +8,7 @@
  import time
  import zlib
  from http.server import BaseHTTPRequestHandler, HTTPServer
-@@ -31,7 +32,7 @@
+@@ -31,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
  import libarchive
  import libarchive.extract
  import libarchive.read
@@ -17,7 +17,7 @@
  
  from .util import AirDropUtil
  
-@@ -95,6 +96,56 @@
+@@ -95,6 +96,55 @@ class AirDropServer:
              f"Announcing service: host {self.config.host_name}, address {self.ip_addr}, port {self.config.port}"
          )
          self.zeroconf.register_service(self.service_info)
@@ -70,7 +70,6 @@
 +        if stop is not None:
 +            stop.set()
 +            self._announce_stop = None
-+
+ 
      def _init_server(self):
          try:
-             httpd = self.ServerClass(self.serveraddress, self.Handler)
