@@ -63,11 +63,11 @@ fi
 # airdrop.sh already derives it from the interface; do the same here.
 if [ -z "$PHY" ] && [ -n "$IFACE" ]; then
   PHY=$(basename "$(readlink -f "/sys/class/net/$IFACE/phy80211")" 2>/dev/null)
-  # Echouer plutot que retomber sur phy0. Si on a bien une interface mais
-  # qu'on ne sait pas quel phy la porte, `phy0` est une DEVINETTE - et sur une
-  # machine multi-radio, ou apres une reinitialisation du peripherique, elle
-  # cree le moniteur sur la mauvaise radio. C'est precisement la panne que ce
-  # correctif supprime ; la reintroduire en secours n'aurait aucun sens.
+  # Fail rather than fall back to phy0. With an interface in hand but no way
+  # to tell which phy carries it, `phy0` is a GUESS - and on a multi-radio
+  # machine, or after a device reset, it creates the monitor on the wrong
+  # radio. That is precisely the failure this change removes; reintroducing it
+  # as a fallback would make no sense.
   if [ -z "$PHY" ]; then
     echo "airdrop-helper: cannot resolve the phy carrying $IFACE" >&2
     exit 1
@@ -76,11 +76,16 @@ fi
 # Sans interface du tout, on garde l'ancien defaut : il n'y a rien a deriver.
 PHY="${PHY:-phy0}"
 
-# AFTER $PHY is final, not before. Assigned at the top it interpolated an
-# empty PHY and produced `ieee80211//mt76`, a path that never exists - so
-# every runtime-pm and deep-sleep workaround below was skipped in silence.
-# That is exactly the "the monitor captures nothing" failure the README
-# documents, and it looks like a hardware problem rather than a typo.
+# AFTER $PHY is final, not before. On main this read `ieee80211/phy0/mt76`,
+# which exists but is the WRONG RADIO whenever the card is not phy0 - after a
+# driver reload, or on a machine with a second one. The runtime-pm and
+# deep-sleep writes below then land on someone else's device and silently do
+# nothing here, which presents as the "monitor captures nothing" failure the
+# README documents rather than as a wrong path.
+#
+# (An earlier version of this comment claimed main produced an empty
+# `ieee80211//mt76`. That was wrong: the empty path only existed between
+# moving the default and this line, i.e. inside this change itself.)
 MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
 
 usage() {
@@ -363,11 +368,16 @@ EOF
     # The value is validated against the allowlist below before any use, so a
     # user-writable file can only pick among names that are already allowed -
     # it cannot inject anything. Default unchanged.
-    strategy="${AIRDROP_OWL_STRATEGY:-}"
-    if [ -z "$strategy" ] && [ -n "${SUDO_USER:-}" ]; then
-      _sf=$(getent passwd "$SUDO_USER" | cut -d: -f6)/.config/airdrop/strategy
-      [ -r "$_sf" ] && strategy=$(head -c 16 "$_sf" | tr -dc 'a-z')
-    fi
+    # Taken from $4 when the caller supplies it ($2 is the channel and $3 the
+    # monitor vif). ROOT NEVER OPENS A PATH THE
+    # USER CONTROLS: an earlier version read ~$SUDO_USER/.config/airdrop/
+    # strategy here, which a symlink to a root-only file would have echoed
+    # back through the error message below, and a FIFO would have hung the
+    # helper forever. airdropd reads that file as the user and passes the
+    # value; the allowlist check stays here, so the argument can still only
+    # name a strategy that was already permitted.
+    strategy="${AIRDROP_OWL_STRATEGY:-${4:-}}"
+    strategy=$(printf '%s' "$strategy" | tr -dc 'a-z' | head -c 16)
     strategy="${strategy:-intersect}"
     case "$strategy" in
       pin|verbatim|fixed|intersect|widen|rotate) ;;

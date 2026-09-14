@@ -42,12 +42,12 @@ log() { printf '[airdrop-confirm] %s\n' "$*" >&2; }
 # incoming transfer was refused while the daemon looked perfectly healthy.
 # It now sits at the end of the cascade, where "no way to ask" is a real
 # conclusion rather than a premature one.
-# Y A-T-IL QUELQU'UN ? La question n'est pas "sommes-nous sous Wayland" mais
-# "existe-t-il une session graphique capable d'afficher une demande". Un bus de
-# session compte : la notification ci-dessous ne demande pas Wayland et marche
-# tres bien sous X11. Tester Wayland seul refusait tout transfert sur un bureau
-# X11 muni d'un demon de notification parfaitement fonctionnel - soit
-# exactement le defaut qu'on corrige ici, deplace d'un compositeur a l'autre.
+# IS ANYONE THERE? The question is not "are we under Wayland" but "is there a
+# graphical session able to show a prompt at all". A session bus counts: the
+# notification below does not require Wayland and works fine under X11.
+# Testing for Wayland alone declined every transfer on an X11 desktop with a
+# perfectly good notification daemon - which is the very fault being fixed
+# here, moved from one compositor to another.
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ] \
    && [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
    && [ -z "${DISPLAY:-}" ] && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
@@ -58,16 +58,61 @@ fi
 MSG="AirDrop: accept file from ${SENDER}?"
 [ -n "$DETAIL" ] && MSG="$MSG"$'\n'"$DETAIL"
 
-# 1. A NOTIFICATION, when there is really someone to receive it. A dialog in
-# the middle of the screen steals focus; for a prompt that arrives unannounced,
-# several times in a row, that is heavy-handed. A notification lands where
-# every other notification lands, carries the same two buttons, and is answered
-# without leaving what you were doing.
+# 1. THE COMPOSITOR'S OWN DIALOG FIRST, when we are on the compositor it
+# belongs to. hyprland-dialog plays exactly the part swaynag plays on sway: it
+# draws its own surface and blocks until answered - but it WRITES THE CHOSEN
+# BUTTON ON STDOUT, which removes the whole marker-file mechanism below and
+# with it the race that mechanism existed to work around. `timeout` supplies
+# the deadline the tool does not have, and anything that is not a plain
+# "Accept" declines.
 #
-# The daemon has to own the name on the session bus for this branch to be
-# taken - that is what makes it safe to use here. And since -A prints only the
-# chosen action's name, nothing but a literal "accept" accepts: timeout,
-# dismissal, a click elsewhere, a daemon that dies mid-prompt, all decline.
+# UNDER HYPRLAND ONLY. Selecting this branch on the binary's mere presence in
+# PATH had it attempted on Sway or X11 as soon as the package happened to be
+# installed - and any failure there declines the transfer without ever
+# reaching swaynag, which would have worked. The cascade may only shorten
+# itself when the next rung is genuinely the right one.
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
+   && command -v hyprland-dialog >/dev/null 2>&1; then
+  ANSWER=$(timeout "$TIMEOUT" hyprland-dialog \
+      --title "AirDrop" --apptitle "AirDrop" \
+      --text "$MSG" --buttons "Accept;Decline" 2>/dev/null)
+  rc=$?
+  case "$ANSWER" in
+    Accept)  log "accepted by user"; exit 0 ;;
+    Decline) log "declined by user"; exit 1 ;;
+    *)
+      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
+      else log "no usable answer from hyprland-dialog (rc=$rc) - declining"; fi
+      exit 1 ;;
+  esac
+fi
+
+# 2. swaynag when we are on sway, for the same reason: it is that
+# compositor's own prompt, it draws its own surface, and it was working before
+# this cascade existed. Jumping straight to it skips the notification branch
+# entirely on sway, which is what keeps that setup unchanged.
+if [ -n "${SWAYSOCK:-}" ] && command -v swaynag >/dev/null 2>&1; then
+  : # fall through to the swaynag implementation at the end of this file
+else
+
+# 3. A NOTIFICATION, only once no compositor dialog applies. It lands where
+# every other notification lands and is answered without leaving what you were
+# doing, which is gentler than a focus-stealing dialog - but it is LAST, not
+# first, and that ordering is load-bearing.
+#
+# Taking this branch whenever something owns org.freedesktop.Notifications
+# breaks setups that already worked. On dunst configured with
+# `mouse_left_click = do_action`, a notification carrying two actions and no
+# default opens a context menu that needs dmenu; with no dmenu the click just
+# closes it, notify-send prints nothing, and the hook declines. And libnotify
+# older than 0.8 has no -A at all, so notify-send exits with a usage error and
+# the hook declines without ever reaching swaynag sitting right there. Trying
+# the compositor's own dialog first leaves both of those untouched.
+#
+# The daemon still has to own the bus name for this branch to run. And since
+# -A prints only the chosen action's name, nothing but a literal "accept"
+# accepts: timeout, dismissal, a click elsewhere, a daemon that dies
+# mid-prompt, all decline.
 if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
    && command -v notify-send >/dev/null 2>&1 \
    && command -v gdbus >/dev/null 2>&1 \
@@ -95,35 +140,12 @@ if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
   esac
 fi
 
-# 2. hyprland-dialog plays exactly the part swaynag plays on sway - it draws
-# its own surface and blocks until answered - but it WRITES THE CHOSEN BUTTON
-# ON STDOUT, which removes the whole marker-file mechanism below and with it
-# the race that mechanism existed to work around. `timeout` supplies the
-# deadline the tool does not have, and anything that is not a plain "Accept"
-# declines.
-# Sous Hyprland SEULEMENT. Choisir cette branche sur la seule presence du
-# binaire dans le PATH la faisait tenter sous Sway ou X11 des que le paquet
-# est installe - et le moindre echec y refuse le transfert, sans jamais
-# atteindre swaynag qui, lui, aurait marche. La cascade ne doit se
-# raccourcir que quand l'etape suivante est vraiment la bonne.
-if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
-   && command -v hyprland-dialog >/dev/null 2>&1; then
-  ANSWER=$(timeout "$TIMEOUT" hyprland-dialog \
-      --title "AirDrop" --apptitle "AirDrop" \
-      --text "$MSG" --buttons "Accept;Decline" 2>/dev/null)
-  rc=$?
-  case "$ANSWER" in
-    Accept)  log "accepted by user"; exit 0 ;;
-    Decline) log "declined by user"; exit 1 ;;
-    *)
-      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
-      else log "no usable answer from hyprland-dialog (rc=$rc) - declining"; fi
-      exit 1 ;;
-  esac
 fi
 
-# 3. swaynag, unchanged below, with one difference: not finding it is no longer
-# the end of the road, it is the end of a cascade.
+# 4. swaynag, unchanged below. Under sway it is reached before the
+# notification, by the SWAYSOCK check above; everywhere else it is the last
+# rung. Not finding it is no longer the end of the road, it is the end of a
+# cascade.
 if ! command -v swaynag >/dev/null 2>&1; then
   log "no notification daemon, no hyprland-dialog, no swaynag - DECLINING (cannot ask, so cannot consent)"
   exit 1

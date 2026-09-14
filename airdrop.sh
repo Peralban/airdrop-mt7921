@@ -671,8 +671,8 @@ else
     if command -v ping6 >/dev/null 2>&1; then PING6="ping6"
     elif command -v ping >/dev/null 2>&1; then PING6="ping -6"
     else
-      # Ni l'un ni l'autre : sans ce test, LOSS retombe a 100 et on annonce
-      # une panne du chemin d'emission alors qu'on n'a rien emis du tout.
+      # Neither one: without this check LOSS falls back to 100 and we report
+      # a TX-path failure having sent nothing at all.
       echo "  SKIPPED: neither ping6 nor ping is installed - cannot test the path" >&2
       break
     fi
