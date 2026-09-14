@@ -668,7 +668,14 @@ else
     # binary. Without this fallback `timeout` exits with "No such file or
     # directory", NOT ONE PACKET is sent, and the layer concludes "NO PING
     # REPLIES - real failure of the TX path" having tested nothing at all.
-    if command -v ping6 >/dev/null 2>&1; then PING6="ping6"; else PING6="ping -6"; fi
+    if command -v ping6 >/dev/null 2>&1; then PING6="ping6"
+    elif command -v ping >/dev/null 2>&1; then PING6="ping -6"
+    else
+      # Ni l'un ni l'autre : sans ce test, LOSS retombe a 100 et on annonce
+      # une panne du chemin d'emission alors qu'on n'a rien emis du tout.
+      echo "  SKIPPED: neither ping6 nor ping is installed - cannot test the path" >&2
+      break
+    fi
     PING_OUT=$(timeout 12 $PING6 -c 5 -W 2 -I $AWDL "$PEER6" 2>&1)
     echo "$PING_OUT" | tail -4 | sed "s/^/    /"
     LOSS=$(echo "$PING_OUT" | grep -oE "[0-9]+% packet loss" | grep -oE "^[0-9]+")

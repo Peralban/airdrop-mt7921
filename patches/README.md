@@ -385,6 +385,8 @@ of forty-three, measured. Shortening it blindly would cut off a merely slow
 transfer, so the first attempt keyed a short tier off nearness to `TotalBytes`.
 That assumes the sender stops at the edge, which is false: measured stops range
 from 440 bytes to 943,642 bytes short, 0.03% to 24%. No threshold covers both.
+(Both ends are from the same night; an earlier draft quoted the 4.9% case as
+the maximum, before the transfer that stopped 24% short.)
 
 So it no longer guesses where the end is. It watches the gap between successful
 reads and arms the timeout at six times the worst gap seen, clamped to 8-30 s

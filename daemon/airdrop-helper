@@ -63,7 +63,17 @@ fi
 # airdrop.sh already derives it from the interface; do the same here.
 if [ -z "$PHY" ] && [ -n "$IFACE" ]; then
   PHY=$(basename "$(readlink -f "/sys/class/net/$IFACE/phy80211")" 2>/dev/null)
+  # Echouer plutot que retomber sur phy0. Si on a bien une interface mais
+  # qu'on ne sait pas quel phy la porte, `phy0` est une DEVINETTE - et sur une
+  # machine multi-radio, ou apres une reinitialisation du peripherique, elle
+  # cree le moniteur sur la mauvaise radio. C'est precisement la panne que ce
+  # correctif supprime ; la reintroduire en secours n'aurait aucun sens.
+  if [ -z "$PHY" ]; then
+    echo "airdrop-helper: cannot resolve the phy carrying $IFACE" >&2
+    exit 1
+  fi
 fi
+# Sans interface du tout, on garde l'ancien defaut : il n'y a rien a deriver.
 PHY="${PHY:-phy0}"
 
 # AFTER $PHY is final, not before. Assigned at the top it interpolated an

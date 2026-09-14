@@ -101,7 +101,13 @@ fi
 # the race that mechanism existed to work around. `timeout` supplies the
 # deadline the tool does not have, and anything that is not a plain "Accept"
 # declines.
-if command -v hyprland-dialog >/dev/null 2>&1; then
+# Sous Hyprland SEULEMENT. Choisir cette branche sur la seule presence du
+# binaire dans le PATH la faisait tenter sous Sway ou X11 des que le paquet
+# est installe - et le moindre echec y refuse le transfert, sans jamais
+# atteindre swaynag qui, lui, aurait marche. La cascade ne doit se
+# raccourcir que quand l'etape suivante est vraiment la bonne.
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
+   && command -v hyprland-dialog >/dev/null 2>&1; then
   ANSWER=$(timeout "$TIMEOUT" hyprland-dialog \
       --title "AirDrop" --apptitle "AirDrop" \
       --text "$MSG" --buttons "Accept;Decline" 2>/dev/null)
