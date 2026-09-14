@@ -364,10 +364,13 @@ Reports an update the same way as an add.
 ## opendrop-salvage-truncated.patch
 
 An interrupted transfer was discarded whole. Over 17 interrupted transfers on
-one MT7922, **13 already contained the complete file** and had lost only the
+one MT7922, **9 already contained the complete file** and had lost only the
 container's terminator: the extracted JPEG matched the sender's sha256 exactly.
-Reception went from about half the attempts to 12 of 12 across an evening, on
-the same radio and the same link.
+
+A later evening, on the same radio and link but with this patch in place, gave
+12 of 12 verified-valid files and then 8 of 9 — a separate cohort, counted
+differently (delivered files rather than recoverable ones), so the two figures
+are not comparable and are kept apart deliberately.
 
 The patch keeps those bytes and **verifies** what it returns. The check walks
 the ODC cpio structure by hand, because libarchive **zero-pads** a truncated

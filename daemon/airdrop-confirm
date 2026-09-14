@@ -42,9 +42,16 @@ log() { printf '[airdrop-confirm] %s\n' "$*" >&2; }
 # incoming transfer was refused while the daemon looked perfectly healthy.
 # It now sits at the end of the cascade, where "no way to ask" is a real
 # conclusion rather than a premature one.
+# Y A-T-IL QUELQU'UN ? La question n'est pas "sommes-nous sous Wayland" mais
+# "existe-t-il une session graphique capable d'afficher une demande". Un bus de
+# session compte : la notification ci-dessous ne demande pas Wayland et marche
+# tres bien sous X11. Tester Wayland seul refusait tout transfert sur un bureau
+# X11 muni d'un demon de notification parfaitement fonctionnel - soit
+# exactement le defaut qu'on corrige ici, deplace d'un compositeur a l'autre.
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ] \
-   && [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-  log "no Wayland session visible - DECLINING (nobody to ask)"
+   && [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
+   && [ -z "${DISPLAY:-}" ] && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  log "no graphical session visible - DECLINING (nobody to ask)"
   exit 1
 fi
 
