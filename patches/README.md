@@ -18,11 +18,12 @@ with every earlier patch already applied, so they only apply in this order:
 ```
 ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
 upload-arms ask-confirm mdns-reannounce threaded-server url-items
+zeroconf-update-service salvage-truncated
 ```
 
 The install loop in the [main README](../README.md) uses exactly that order.
-Verified 2026-09-14: all eleven apply with plain `git apply` to a clean
-`opendrop==0.13.0` from PyPI, and the result compiles. Before that date
+Verified 2026-09-15: all thirteen apply with plain `git apply` to a clean
+`opendrop==0.13.0` from PyPI, and the result compiles. Before 2026-09-14
 `recv-window` and `threaded-server` only applied with reduced context, and
 `mdns-reannounce` did not apply at all (one hunk had turned a blank context
 line into an added one). A new patch must be generated against the tip of
@@ -377,7 +378,9 @@ the ODC cpio structure by hand, because libarchive **zero-pads** a truncated
 member out to its declared size - a file can be exactly the right length and
 end in 949,265 null bytes, so comparing sizes detects nothing at all. Anything
 incomplete is suffixed `.partial`; quietly handing back a half-empty photo that
-still opens would be worse than a clean failure.
+still opens would be worse than a clean failure. Both archive types get the
+check: iOS 26 `x-dvzip`, and gzip'd `x-cpio`, which is decompressed without
+requiring the gzip end-of-stream marker, since a cut-off transfer never has one.
 
 **The read timeout follows the link's rhythm rather than being a constant.** A
 flat 30 s was added to every salvaged transfer - thirty seconds of nothing out

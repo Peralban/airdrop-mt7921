@@ -73,7 +73,7 @@ if [ -z "$PHY" ] && [ -n "$IFACE" ]; then
     exit 1
   fi
 fi
-# Sans interface du tout, on garde l'ancien defaut : il n'y a rien a deriver.
+# With no interface at all, keep the old default: there is nothing to derive.
 PHY="${PHY:-phy0}"
 
 # AFTER $PHY is final, not before. On main this read `ieee80211/phy0/mt76`,

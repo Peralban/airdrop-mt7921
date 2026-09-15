@@ -123,7 +123,7 @@ done
 ```
 
 The patches are a series: each one is made against the result of the ones
-before it, so apply all eleven, in exactly this order, to a clean OpenDrop
+before it, so apply all thirteen, in exactly this order, to a clean OpenDrop
 0.13.0. `url-items` in particular will not apply without the three daemon
 patches ahead of it. If a `git apply` fails, rebuild the venv rather than
 retrying on a half-patched tree.
