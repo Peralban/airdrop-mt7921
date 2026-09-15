@@ -612,7 +612,11 @@ stack_up() {
     # it came up, else the plain mon0. Unicast AWDL is unanswered without it.
     local ackvif
     ackvif=$(printf '%s' "$up" | grep -oP '"ackvif":"\K[^"]+')
-    owlargs=(owl-start "$chan" "${ackvif:-mon0}")
+    # Read as the invoking user, never by root inside the helper: the value
+    # crosses as an argument because `sudo -n` without -E drops the
+    # environment, so AIRDROP_OWL_STRATEGY alone cannot reach it.
+    owlstrategy=$(head -c 16 "${XDG_CONFIG_HOME:-$HOME/.config}/airdrop/strategy" 2>/dev/null | tr -dc 'a-z')
+    owlargs=(owl-start "$chan" "${ackvif:-mon0}" "$owlstrategy")
     log "go0 up on ch $chan (P2P-GO mode, owl on ${ackvif:-mon0})"
   else
     if ! up=$(sudo -n "$HELPER" up 2>&1); then
@@ -621,7 +625,8 @@ stack_up() {
       return 1
     fi
     chan=$(printf '%s' "$up" | grep -oP '"chan":\K[0-9]+')
-    owlargs=(owl-start "${chan:-36}")
+    owlstrategy=$(head -c 16 "${XDG_CONFIG_HOME:-$HOME/.config}/airdrop/strategy" 2>/dev/null | tr -dc 'a-z')
+    owlargs=(owl-start "${chan:-36}" "" "$owlstrategy")
     log "stack up on ch ${chan:-?}"
   fi
 

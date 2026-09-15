@@ -116,13 +116,14 @@ python -m venv ~/owl/.venv-opendrop
 ~/owl/.venv-opendrop/bin/pip install opendrop==0.13.0
 cd ~/owl/.venv-opendrop/lib/python*/site-packages
 for p in ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog \
-         upload-arms ask-confirm mdns-reannounce threaded-server url-items; do
+         upload-arms ask-confirm mdns-reannounce threaded-server url-items \
+         zeroconf-update-service salvage-truncated; do
   git apply /path/to/airdrop-mt7921/patches/opendrop-$p.patch || break
 done
 ```
 
 The patches are a series: each one is made against the result of the ones
-before it, so apply all eleven, in exactly this order, to a clean OpenDrop
+before it, so apply all thirteen, in exactly this order, to a clean OpenDrop
 0.13.0. `url-items` in particular will not apply without the three daemon
 patches ahead of it. If a `git apply` fails, rebuild the venv rather than
 retrying on a half-patched tree.
