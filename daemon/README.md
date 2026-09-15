@@ -34,7 +34,7 @@ trade worth making for a switch that just works with no second step.
 |---|---|
 | `ble-watch` | Detects Apple Continuity **AirDrop** adverts (company `0x004C`, type `0x05`) by parsing `btmon`. Prints one JSON line per sighting. |
 | `airdrop-helper` | The **only** privileged entry point. `up` / `down` / `status` / `ap-channel` / `wifi-reset`, plus `go-up` / `go-down` / `owl-start` / `owl-stop` / `avahi-down` / `avahi-up` for the P2P-GO path, and `ble-adv` / `ble-adv-stop` / `ble-adv-count` for the send path's Continuity advert. |
-| `airdrop-confirm` | Asks the user, via `swaynag`, whether to accept an incoming file. |
+| `airdrop-confirm` | Asks the user whether to accept an incoming file: `hyprland-dialog` on Hyprland, `swaynag` on sway, otherwise a notification with Accept/Decline actions. Anything but an explicit Accept declines. |
 | `airdropd` | Orchestrator. BLE mode: trigger → stack up → advertise → confirm → tear down. Always-on mode: stack up → advertise → confirm, staying up until stopped, with a health watch over it. Also `send`, below. |
 | `airdrop-send` | Desktop wrapper around `airdropd send`: same thing with `notify-send` progress. What the Thunar right-click runs. |
 | `thunar-action.xml` | The right-click menu entry, installed by `../tools/install-thunar-action.sh`. |
@@ -167,6 +167,11 @@ emits the advert `airdropd` waits for; in always-on mode nothing is waited for
 and the receiver is already up.
 
 ### Sending
+
+**Never yet run against a phone** (see
+[Known-good and not-yet-proven](#known-good-and-not-yet-proven)). The only
+proven way to send is `ACTIVE=1 ./airdrop.sh send <file>`, which takes the card
+exclusively.
 
 ```sh
 daemon/airdropd send photo.jpg          # terminal
