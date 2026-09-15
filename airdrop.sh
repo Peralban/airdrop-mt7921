@@ -664,7 +664,19 @@ else
   for try in $(seq "$PING_TRIES"); do
     [ "$try" -gt 1 ] && echo "  ping6 (attempt $try of $PING_TRIES - retrying, loss was ${LOSS}%):"
     [ "$try" = "1" ] && echo "  ping6 (5 attempts, 8s):"
-    PING_OUT=$(timeout 12 ping6 -c 5 -W 2 -I $AWDL "$PEER6" 2>&1)
+    # iputils folded ping6 into `ping -6` and no longer ships the separate
+    # binary. Without this fallback `timeout` exits with "No such file or
+    # directory", NOT ONE PACKET is sent, and the layer concludes "NO PING
+    # REPLIES - real failure of the TX path" having tested nothing at all.
+    if command -v ping6 >/dev/null 2>&1; then PING6="ping6"
+    elif command -v ping >/dev/null 2>&1; then PING6="ping -6"
+    else
+      # Neither one: without this check LOSS falls back to 100 and we report
+      # a TX-path failure having sent nothing at all.
+      echo "  SKIPPED: neither ping6 nor ping is installed - cannot test the path" >&2
+      break
+    fi
+    PING_OUT=$(timeout 12 $PING6 -c 5 -W 2 -I $AWDL "$PEER6" 2>&1)
     echo "$PING_OUT" | tail -4 | sed "s/^/    /"
     LOSS=$(echo "$PING_OUT" | grep -oE "[0-9]+% packet loss" | grep -oE "^[0-9]+")
     LOSS="${LOSS:-100}"

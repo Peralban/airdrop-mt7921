@@ -18,11 +18,12 @@ with every earlier patch already applied, so they only apply in this order:
 ```
 ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
 upload-arms ask-confirm mdns-reannounce threaded-server url-items
+zeroconf-update-service salvage-truncated
 ```
 
 The install loop in the [main README](../README.md) uses exactly that order.
-Verified 2026-09-14: all eleven apply with plain `git apply` to a clean
-`opendrop==0.13.0` from PyPI, and the result compiles. Before that date
+Verified 2026-09-15: all thirteen apply with plain `git apply` to a clean
+`opendrop==0.13.0` from PyPI, and the result compiles. Before 2026-09-14
 `recv-window` and `threaded-server` only applied with reduced context, and
 `mdns-reannounce` did not apply at all (one hunk had turned a blank context
 line into an added one). A new patch must be generated against the tip of
@@ -343,3 +344,65 @@ zlib forms.
 properly - it sends the header and then the body without waiting for the 100.
 The header is present on the wire, which is what the arm tests, but if the phone
 requires a real wait this arm understates the case.
+
+
+## opendrop-zeroconf-update-service.patch
+
+`AirDropBrowser` defines `add_service` and `remove_service` but not
+`update_service`, which python-zeroconf has required on a listener since 0.3x.
+The call raises `AttributeError` **inside the ServiceBrowser thread**, which
+kills it. Nothing surfaces from outside: the process stays up, the listener
+object is still there, and discovery simply never reports anything again.
+
+The failure is worse than a missing stub usually is, because a device that
+re-announces itself fires `update` rather than `add` - and re-announcing is
+exactly what the peer you are waiting for does. So the one event that matters
+is the one that takes the thread down.
+
+Reports an update the same way as an add.
+
+
+## opendrop-salvage-truncated.patch
+
+An interrupted transfer was discarded whole. Over 17 interrupted transfers on
+one MT7922, **9 already contained the complete file** and had lost only the
+container's terminator: the extracted JPEG matched the sender's sha256 exactly.
+
+A later evening, on the same radio and link but with this patch in place, gave
+12 of 12 verified-valid files and then 8 of 9 — a separate cohort, counted
+differently (delivered files rather than recoverable ones), so the two figures
+are not comparable and are kept apart deliberately.
+
+The patch keeps those bytes and **verifies** what it returns. The check walks
+the ODC cpio structure by hand, because libarchive **zero-pads** a truncated
+member out to its declared size - a file can be exactly the right length and
+end in 949,265 null bytes, so comparing sizes detects nothing at all. Anything
+incomplete is suffixed `.partial`; quietly handing back a half-empty photo that
+still opens would be worse than a clean failure. Both archive types get the
+check: iOS 26 `x-dvzip`, and gzip'd `x-cpio`, which is decompressed without
+requiring the gzip end-of-stream marker, since a cut-off transfer never has one.
+
+**The read timeout follows the link's rhythm rather than being a constant.** A
+flat 30 s was added to every salvaged transfer - thirty seconds of nothing out
+of forty-three, measured. Shortening it blindly would cut off a merely slow
+transfer, so the first attempt keyed a short tier off nearness to `TotalBytes`.
+That assumes the sender stops at the edge, which is false: measured stops range
+from 440 bytes to 943,642 bytes short, 0.03% to 24%. No threshold covers both.
+(Both ends are from the same night; an earlier draft quoted the 4.9% case as
+the maximum, before the transfer that stopped 24% short.)
+
+So it no longer guesses where the end is. It watches the gap between successful
+reads and arms the timeout at six times the worst gap seen, clamped to 8-30 s
+(`AIRDROP_STALL_FLOOR`, `AIRDROP_STALL_TIMEOUT`). A steady link drops to the
+floor within seconds; a choppy one lets the timeout climb on its own, and the
+ceiling is the old value, so it can never wait *longer* than before. Verified
+live: a worst gap of 3.2 s gave 19 s instead of 30 on a 6 MB photo that arrived
+complete - and a fixed 8 s tier would have cut that one off.
+
+The timeout sits on the **handler class** rather than on `/Upload` alone. `_next_chunk` blocked in `readline()` with no deadline, so a
+phone that went quiet froze the loop forever and even the bytes already
+received stayed in the buffer. The class-level placement is what matters:
+`handle_ask` reads its request body *before* calling the consent hook, so a
+peer stalling there hung with no prompt on screen and nothing in the log.
+
+Applied last, since it touches `server.py` after every other patch has.

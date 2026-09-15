@@ -13,11 +13,17 @@
 # AirDrop set to Everyone can put files on the machine unattended and unlogged.
 # So the confirmation is a REQUIREMENT of the always-on design, not a nicety.
 #
-# swaynag, not notify-send: there is no notification daemon running on this box
-# (no mako, no dunst), so notify-send would return success having shown nobody
-# anything - the worst possible failure mode for a security prompt. swaynag is
-# part of sway itself, always present, draws its own surface, and blocks until
-# answered, which is exactly the semantics needed here.
+# ASKING IS TRIED THREE WAYS, most native first, and every one of them fails
+# closed. The original note said notify-send was unusable because no
+# notification daemon ran on the author's box: the call would return success
+# having shown nobody anything, the worst possible failure for a security
+# prompt. That objection is correct, so it is answered rather than ignored -
+# we ask the bus whether anyone actually owns org.freedesktop.Notifications
+# before trusting it, and only a literal action name on stdout accepts.
+#
+# swaynag alone was not enough, because it does not exist outside sway. On any
+# other compositor this hook could not ask, so it declined - which means every
+# incoming transfer was refused, silently, with the daemon otherwise healthy.
 set -u
 
 SENDER="${1:-unknown sender}"
@@ -31,17 +37,119 @@ TIMEOUT="${AIRDROP_CONFIRM_TIMEOUT:-45}"
 
 log() { printf '[airdrop-confirm] %s\n' "$*" >&2; }
 
-if ! command -v swaynag >/dev/null 2>&1; then
-  log "swaynag not found - DECLINING (cannot ask, so cannot consent)"
-  exit 1
-fi
-if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ]; then
-  log "no Wayland session visible - DECLINING (nobody to ask)"
+# The swaynag check used to live HERE, before any attempt to ask. On a
+# compositor that is not sway it exited on this line every time, so every
+# incoming transfer was refused while the daemon looked perfectly healthy.
+# It now sits at the end of the cascade, where "no way to ask" is a real
+# conclusion rather than a premature one.
+# IS ANYONE THERE? The question is not "are we under Wayland" but "is there a
+# graphical session able to show a prompt at all". A session bus counts: the
+# notification below does not require Wayland and works fine under X11.
+# Testing for Wayland alone declined every transfer on an X11 desktop with a
+# perfectly good notification daemon - which is the very fault being fixed
+# here, moved from one compositor to another.
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${SWAYSOCK:-}" ] \
+   && [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
+   && [ -z "${DISPLAY:-}" ] && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  log "no graphical session visible - DECLINING (nobody to ask)"
   exit 1
 fi
 
 MSG="AirDrop: accept file from ${SENDER}?"
 [ -n "$DETAIL" ] && MSG="$MSG"$'\n'"$DETAIL"
+
+# 1. THE COMPOSITOR'S OWN DIALOG FIRST, when we are on the compositor it
+# belongs to. hyprland-dialog plays exactly the part swaynag plays on sway: it
+# draws its own surface and blocks until answered - but it WRITES THE CHOSEN
+# BUTTON ON STDOUT, which removes the whole marker-file mechanism below and
+# with it the race that mechanism existed to work around. `timeout` supplies
+# the deadline the tool does not have, and anything that is not a plain
+# "Accept" declines.
+#
+# UNDER HYPRLAND ONLY. Selecting this branch on the binary's mere presence in
+# PATH had it attempted on Sway or X11 as soon as the package happened to be
+# installed - and any failure there declines the transfer without ever
+# reaching swaynag, which would have worked. The cascade may only shorten
+# itself when the next rung is genuinely the right one.
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] \
+   && command -v hyprland-dialog >/dev/null 2>&1; then
+  ANSWER=$(timeout "$TIMEOUT" hyprland-dialog \
+      --title "AirDrop" --apptitle "AirDrop" \
+      --text "$MSG" --buttons "Accept;Decline" 2>/dev/null)
+  rc=$?
+  case "$ANSWER" in
+    Accept)  log "accepted by user"; exit 0 ;;
+    Decline) log "declined by user"; exit 1 ;;
+    *)
+      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
+      else log "no usable answer from hyprland-dialog (rc=$rc) - declining"; fi
+      exit 1 ;;
+  esac
+fi
+
+# 2. swaynag when we are on sway, for the same reason: it is that
+# compositor's own prompt, it draws its own surface, and it was working before
+# this cascade existed. Jumping straight to it skips the notification branch
+# entirely on sway, which is what keeps that setup unchanged.
+if [ -n "${SWAYSOCK:-}" ] && command -v swaynag >/dev/null 2>&1; then
+  : # fall through to the swaynag implementation at the end of this file
+else
+
+# 3. A NOTIFICATION, only once no compositor dialog applies. It lands where
+# every other notification lands and is answered without leaving what you were
+# doing, which is gentler than a focus-stealing dialog - but it is LAST, not
+# first, and that ordering is load-bearing.
+#
+# Taking this branch whenever something owns org.freedesktop.Notifications
+# breaks setups that already worked. On dunst configured with
+# `mouse_left_click = do_action`, a notification carrying two actions and no
+# default opens a context menu that needs dmenu; with no dmenu the click just
+# closes it, notify-send prints nothing, and the hook declines. And libnotify
+# older than 0.8 has no -A at all, so notify-send exits with a usage error and
+# the hook declines without ever reaching swaynag sitting right there. Trying
+# the compositor's own dialog first leaves both of those untouched.
+#
+# The daemon still has to own the bus name for this branch to run. And since
+# -A prints only the chosen action's name, nothing but a literal "accept"
+# accepts: timeout, dismissal, a click elsewhere, a daemon that dies
+# mid-prompt, all decline.
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
+   && command -v notify-send >/dev/null 2>&1 \
+   && command -v gdbus >/dev/null 2>&1 \
+   && [ "$(gdbus call --session --dest org.freedesktop.DBus \
+             --object-path /org/freedesktop/DBus \
+             --method org.freedesktop.DBus.NameHasOwner \
+             org.freedesktop.Notifications 2>/dev/null)" = "(true,)" ]; then
+  # -u critical: most daemons keep critical notifications on screen until they
+  # are answered. A consent prompt that expires on its own after five seconds
+  # would be an implicit decision dressed up as a silent decline.
+  #
+  # -A implies --wait and so blocks forever; `timeout` supplies the deadline.
+  ANSWER=$(timeout "$TIMEOUT" notify-send \
+      -a "AirDrop" -u critical -i "network-wireless-symbolic" \
+      -A "accept=Accept" -A "decline=Decline" \
+      "AirDrop - ${SENDER}" "${DETAIL:-Incoming file}" 2>/dev/null)
+  rc=$?
+  case "$ANSWER" in
+    accept)  log "accepted by user"; exit 0 ;;
+    decline) log "declined by user"; exit 1 ;;
+    *)
+      if [ "$rc" -eq 124 ]; then log "no answer within ${TIMEOUT}s - declining"
+      else log "notification gave no usable answer (rc=$rc) - declining"; fi
+      exit 1 ;;
+  esac
+fi
+
+fi
+
+# 4. swaynag, unchanged below. Under sway it is reached before the
+# notification, by the SWAYSOCK check above; everywhere else it is the last
+# rung. Not finding it is no longer the end of the road, it is the end of a
+# cascade.
+if ! command -v swaynag >/dev/null 2>&1; then
+  log "no notification daemon, no hyprland-dialog, no swaynag - DECLINING (cannot ask, so cannot consent)"
+  exit 1
+fi
 
 # swaynag has no built-in timeout and no exit code that distinguishes the
 # buttons, so both are built here: a marker file per button, and a poll that
