@@ -185,6 +185,14 @@ invisible no matter what AirDrop is set to.
 
 ### Sending from the file manager
 
+**Not yet proven against a phone.** Sending has only ever completed through
+`airdrop.sh send` in exclusive mode (`ACTIVE=1`, Wi-Fi dropped for the run).
+`airdropd send`, and so the right-click below, has never been run against a
+phone at all. If it finds nobody, try `ACTIVE=1 ./airdrop.sh send <file>` before
+debugging the daemon. Details in
+[daemon/README.md](daemon/README.md#known-good-and-not-yet-proven) and
+[#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2).
+
 `airdrop.sh send` owns the radio, so it cannot run while the waybar toggle is
 on. `airdropd send` can - it attaches to the running stack instead of building
 its own - and that is what the Thunar right-click uses:
