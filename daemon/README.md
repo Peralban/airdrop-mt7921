@@ -485,10 +485,18 @@ armed in 5 s, and a 4-minute control with the sheet closed saw **zero**.
 up throughout (§47). So discovery, `/Ask`, consent and the bulk of `/Upload`
 all work through the daemon.
 
-**Not yet proven: a transfer that completes.** The tail is lost (see
-limitations), and the accept-race fix in §48 — which was turning *every* accept
-into a 403 — landed after that run and has not been retested against a phone.
-Retest a plain transfer before chasing anything more exotic.
+**A complete always-on receive has been measured on an MT7922**
+(`14c3:0616`, `mt7921e`) by a contributor, in
+[#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2): a 130 KB photo
+through `/Discover`, `/Ask` and `/Upload`, intact. Two more photos completed
+later with the GO moved to the station's own channel, which was the best
+configuration measured on that card. Short transfers complete there; a 45 MB
+video did not (limitation 12).
+
+**Not yet proven on the MT7921 here: a transfer that completes.** The tail is
+lost (see limitations), and the accept-race fix in §48 — which was turning
+*every* accept into a 403 — landed after that run and has not been retested
+against a phone. Retest a plain transfer before chasing anything more exotic.
 
 For a receive that is proven to complete right now, use the standalone
 `airdrop.sh` exclusive path (a full 2.56 MB photo, byte-exact, PIL-verified),
@@ -518,10 +526,13 @@ Current, honest, and roughly in the order you are likely to hit them.
    2/16 *during* the transfer and why is **unknown**. One untested hypothesis:
    INTERSECT mirrors the peer downward, so a brief dip narrows our
    advertisement, which may make it dip further — a feedback collapse.
-2. **opendrop crashes on a truncated stream** rather than salvaging it
+2. **A truncated stream is salvaged, not lost**, but only with
+   `opendrop-salvage-truncated.patch` applied. Without it opendrop crashes
    (`ValueError: invalid literal for int() with base 16: b''` from
-   `_next_chunk()` on EOF). The 660 KB survived only because the iOS 26 patch
-   buffers the body to disk first.
+   `_next_chunk()` on EOF), and the 660 KB above survived only because the
+   iOS 26 patch buffers the body to disk first. With it, complete members are
+   kept and incomplete ones are suffixed `.partial`
+   ([patches/README.md](../patches/README.md#opendrop-salvage-truncatedpatch)).
 3. **You are only visible on AirDrop → Everyone.** opendrop has no Apple ID
    validation record, and **iOS silently reverts Everyone → Contacts Only after
    ~10 minutes** with no outward sign. This is the single most common cause of
@@ -549,6 +560,19 @@ Current, honest, and roughly in the order you are likely to hit them.
     longer needs to be that tight now the server is threaded, but it still is.
 11. **`~/owl/.venv-opendrop` is not version controlled.** Every opendrop fix
     lives in `patches/` and must be reapplied after a venv rebuild.
+12. **A sustained AWDL session can take the station link down.** Measured on
+    an MT7922 in [#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2),
+    not yet checked on the MT7921 here, though the driver code involved is
+    shared. One to five minutes into an active session with a peer,
+    `wpa_supplicant` logs `CTRL-EVENT-BEACON-LOSS` once a second; the station
+    stays associated but carries nothing, and only a driver reload brings it
+    back. Halving the transfer rate delayed it without preventing it, and owl
+    ran 14 minutes cleanly with no peer at all. On the driver side, a monitor
+    vif turns off runtime PM and the firmware beacon filter
+    (`mt7921_sniffer_interface_iter`), and the helper's own `runtime-pm` write
+    clears `CONNECTION_MONITOR` (`mt7921_pm_interface_iter`), so beacon loss is
+    counted by mac80211 on the host. Why beacons go missing during a session
+    is not yet proven.
 
 ## Gotchas paid for already
 
