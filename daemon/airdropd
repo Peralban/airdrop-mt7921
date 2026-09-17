@@ -1087,6 +1087,17 @@ cmd_run() {
 
   # ble-watch is only needed by the BLE-triggered path; always-on never runs
   # it, so do not make a missing one fatal for a mode that will not call it.
+  # jq IS NOT OPTIONAL on the send path. send_report_fresh and send_receiver
+  # both parse the discovery report with it, and neither checks. Without jq the
+  # receiver id comes back empty and the send exits through
+  # send_no_receiver_help, which opens with "This is nearly always the phone's
+  # state, not the radio" and sends the user off to re-arm a phone that was
+  # never the problem. That cost an hour here on a machine that simply did not
+  # have the package.
+  command -v jq >/dev/null 2>&1 || {
+    echo "airdropd: jq is required (the send path parses the discovery report with it)" >&2
+    exit 1
+  }
   local need=("$HELPER" "$CONFIRM" "$OWL" "$OPENDROP")
   [ "$ALWAYS" = 1 ] || need+=("$BLE_WATCH")
   for p in "${need[@]}"; do
@@ -1256,9 +1267,33 @@ send_report_fresh() {
 # answered mDNS first. Worse, opendrop's _get_receiver_info() does int(receiver)
 # and falls through to len() on IndexError, so a short report gives a traceback
 # instead of "no such receiver". An ID cannot do either.
+# WE ARE IN OUR OWN BROWSE. On the ATTACH path the daemon's receiver is
+# advertising _airdrop._tcp on awdl0, so `opendrop find` sees it and reports
+# `name <this host>` - us. Measured on an MT7922, the browse that finally
+# worked returned:
+#
+#     Found  index 0  ID e0e8070b981d  name archlinux
+#     Found  index 1  ID 9eafac8cb802  name iPhone alban
+#
+# with the phone behind us. That poisoned both halves of the send: send_receiver
+# took .[0] and would have addressed the transfer to this machine, and
+# send_browse broke on the first `Found` line, which is always ours, so the
+# browse ended before the phone could answer.
+#
+# The service id cannot identify us: opendrop draws it at random on every start.
+# The address is exact, and the hostname covers the window where awdl0 exists
+# without one yet.
+send_self_addrs() {
+  ip -6 addr show dev awdl0 scope link 2>/dev/null \
+    | awk '/inet6/{split($2,a,"/"); print a[1]}'
+}
+
 send_receiver() {
   if [ -n "${AIRDROP_RECEIVER:-}" ]; then printf '%s' "$AIRDROP_RECEIVER"; return 0; fi
-  jq -r '.[0].id // empty' "$SEND_REPORT" 2>/dev/null
+  jq -r --arg me "$(uname -n)" --arg addrs "$(send_self_addrs | paste -sd, -)" '
+      ($addrs | split(",")) as $mine
+      | [ .[] | select(.name != $me and (.address as $a | $mine | index($a) | not)) ]
+      | .[0].id // empty' "$SEND_REPORT" 2>/dev/null
 }
 
 send_receiver_name() {
@@ -1288,7 +1323,14 @@ send_browse() {
   local pid=$!
   for i in $(seq $((SEND_FIND_TIME * 2))); do
     kill -0 "$pid" 2>/dev/null || break
-    if grep -qE "^\s*[0-9]+\)|Found" "$flog" 2>/dev/null; then
+    # A `Found` line naming this host is our own receiver, not a peer: keep
+    # browsing rather than declaring success on ourselves.
+    if awk -v me="$(uname -n)" '
+           /^[[:space:]]*[0-9]+\)|Found/ {
+             line = $0; sub(/.*name[[:space:]]+/, "", line)
+             if (line != me) found = 1
+           }
+           END { exit !found }' "$flog" 2>/dev/null; then
       found=1
       # A beat, so a second receiver one line later is not cut off.
       sleep 2
