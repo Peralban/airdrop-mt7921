@@ -38,12 +38,12 @@ OUT="${OUT_DIR:-$PWD/runs}/txbisect-$(date +%Y%m%d-%H%M%S)"
 
 # Each entry: <label>:<binary>:<extra args>. Oldest first, so the first FAIL
 # after a PASS names the culprit.
-S=/tmp/claude-1000/-home-jed/3da1edfb-3941-43d6-bab5-b273a712f7c7/scratchpad
+S="${S:-$HOME/owl-builds}"
 BUILDS="${BUILDS:-
 0c48db8-base:$S/owl-good/build/daemon/owl:
 c3fc4a4-strategies:$S/owl-c3fc4a4/build/daemon/owl:-S pin
 92a12b8-async-setchan:$S/owl-92a12b8/build/daemon/owl:-S pin
-HEAD-current:/home/jed/owl/build/daemon/owl:-S pin
+HEAD-current:$HOME/owl/build/daemon/owl:-S pin
 }"
 
 if [ "$(id -u)" = "0" ]; then echo "run as a normal user; it sudos internally"; exit 1; fi

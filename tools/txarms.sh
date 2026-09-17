@@ -53,7 +53,7 @@ case "$CHAN" in
   *) echo "unknown channel $CHAN"; exit 1 ;;
 esac
 MT76=/sys/kernel/debug/ieee80211/$PHY/mt76
-OWL="${OWL:-/home/jed/owl/build/daemon/owl}"
+OWL="${OWL:-$HOME/owl/build/daemon/owl}"
 PEER_WAIT="${PEER_WAIT:-40}"
 OUT="${OUT_DIR:-$PWD/runs}/txarms-$(date +%Y%m%d-%H%M%S)"
 
