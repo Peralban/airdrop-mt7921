@@ -6,9 +6,11 @@ than with what `iw` claims. They are kept because the answers in
 [../docs/FINDINGS.md](../docs/FINDINGS.md) are only as good as the runs behind
 them, and because two of them are what this whole project rests on.
 
-Every script takes the Wi-Fi card exclusively and restores networking on exit
-via a bash trap **and** a `setsid`-detached watchdog, so your networking comes
-back even on `kill -9`.
+Every script here takes the Wi-Fi card exclusively and restores networking on
+exit via a bash trap **and** a `setsid`-detached watchdog, so your networking
+comes back even on `kill -9`. The one exception is `beaconwatch.sh`, which only
+reads counters: it needs no privilege, touches nothing, and is meant to be left
+running *while* one of the others does the disruptive part.
 
 Set `IFACE=` if your card is not `wlp2s0`, and `OUT_DIR=` to move the logs; they
 default to `./runs`. They still assume `phy0` and Void's `sv`, unlike
@@ -23,6 +25,7 @@ default to `./runs`. They still assume `phy0` and Void's `sv`, unlike
 | `hoptest2.sh` | Does OWL's channel hopping reach the away-channel? Radio truth vs OWL's belief. |
 | `activetest2.sh` | Plain vs active monitor, both verified on the *same* frequency. |
 | `awdltest.sh` | Can active monitor hear AWDL at all? |
+| `beaconwatch.sh` | When the station dies under AirDrop, did the beacons never arrive, arrive and get dropped, or did TX saturate? |
 | `activelate2.sh` | **Can an active vif inherit a channel set before it existed?** Phase F is the discovery. |
 | `activelate3.sh` | **Does the pair hop together?** Yes - one shared channel context. |
 | `bursts.py` | How fast was a transfer, and *why*? Splits the stream into availability windows. |
