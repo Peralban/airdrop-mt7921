@@ -50,6 +50,27 @@ mkdir -p "$OUT" || exit 1
 sudo -v || exit 1
 sudo mountpoint -q /sys/kernel/debug || sudo mount -t debugfs none /sys/kernel/debug
 
+# WHICH SERVICE MANAGER. This used to call `sv` unconditionally, which is
+# Void's. Anywhere else the command simply is not found, NetworkManager stays
+# up, and it restarts the wpa_supplicant the next line kills - so the
+# supplicant keeps scanning throughout the run. A scan moves the radio, so the
+# monitor never holds the frequency it was given and every radiotap reading is
+# of wherever the scan happened to be. Measured on Arch: 6 CTRL-EVENT-SCAN-FAILED
+# and 2 CTRL-EVENT-TERMINATING during one 60 s run, `set freq 5180` ignored,
+# and three runs reporting three different 2.4 GHz frequencies while asking for
+# 5 GHz. airdrop.sh already picks the right one; do the same here.
+if command -v sv >/dev/null 2>&1 && [ -e /var/service/NetworkManager ]; then
+  NM_UP='sudo sv up NetworkManager'
+  NM_DOWN='sudo sv down NetworkManager'
+elif command -v systemctl >/dev/null 2>&1; then
+  NM_UP='sudo systemctl start NetworkManager'
+  NM_DOWN='sudo systemctl stop NetworkManager'
+else
+  echo "REFUSING: neither sv nor systemctl found; cannot stop NetworkManager," >&2
+  echo "  and leaving it up makes every frequency reading meaningless." >&2
+  exit 1
+fi
+
 RESTORE_CMDS='
   sudo pkill -x owl 2>/dev/null || true
   sudo ip link set '"$MON"' down 2>/dev/null || true
@@ -59,7 +80,7 @@ RESTORE_CMDS='
   sudo ip link set '"$IFACE"' down 2>/dev/null || true
   sudo iw dev '"$IFACE"' set type managed 2>/dev/null || true
   sudo ip link set '"$IFACE"' up 2>/dev/null || true
-  sudo sv up NetworkManager 2>/dev/null || true
+  '"$NM_UP"' 2>/dev/null || true
 '
 setsid nohup bash -c "sleep $WATCHDOG_TIMEOUT; $RESTORE_CMDS" >/dev/null 2>&1 &
 WATCHDOG_PID=$!
@@ -77,9 +98,9 @@ restore() {
 trap restore EXIT INT TERM
 
 # --- take the card ---
-sudo sv down NetworkManager
+$NM_DOWN
 sudo pkill -x wpa_supplicant 2>/dev/null; sudo pkill -x dhcpcd 2>/dev/null; sleep 1
-sudo iw reg set NZ
+sudo iw reg set "${REG:-NZ}"
 
 # --- dedicated monitor vif (bug 2 workaround) ---
 sudo ip link set $IFACE down
