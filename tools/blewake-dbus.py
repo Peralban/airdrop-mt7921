@@ -9,7 +9,7 @@ advertising on a system where it runs; going through LEAdvertisingManager1
 lets it enable the advertising itself, which is the path BlueZ expects.
 
 Payload is byte-identical to the project's:
-    17 FF 4C00 05 12 00*8 01 00*8
+    17 FF 4C00 05 12 00*8 01 00*9
 i.e. manufacturer 0x004C (Apple) with the AirDrop subtype and empty hashes,
 which is what "Everyone" mode needs - no contact match is possible.
 
@@ -31,6 +31,10 @@ PAYLOAD = bytes.fromhex("0512000000000000000001000000000000000000")
 
 
 class Advertisement(dbus.service.Object):
+    def __init__(self, bus, path, on_release):
+        super().__init__(bus, path)
+        self.on_release = on_release
+
     @dbus.service.method("org.freedesktop.DBus.Properties",
                          in_signature="s", out_signature="a{sv}")
     def GetAll(self, interface):
@@ -49,17 +53,24 @@ class Advertisement(dbus.service.Object):
 
     @dbus.service.method("org.bluez.LEAdvertisement1")
     def Release(self):
-        pass
+        # THE ONLY NOTICE WE GET that the advert is gone. When the controller
+        # goes away, BlueZ's manager_destroy runs client_destroy on every
+        # registered advert, which calls Release here and frees the object
+        # (src/advertising.c). The controller comes back with no adverts at
+        # all. Without clearing the flag, arm() below still believes we are up
+        # and never registers again, which is precisely the combo-chip reset
+        # this tool exists to survive.
+        self.on_release()
 
 
 def main():
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
-    # THIS REFERENCE IS LOAD-BEARING: without it Python collects the object,
-    # its D-Bus path disappears, and BlueZ drops the advert without a word.
-    adv = Advertisement(bus, PATH)
-    manager = dbus.Interface(bus.get_object("org.bluez", ADAPTER),
-                             "org.bluez.LEAdvertisingManager1")
+    # follow_name_owner_changes: a bluetoothd restart hands org.bluez to a new
+    # owner, and a proxy bound to the old one throws on every later call.
+    manager = dbus.Interface(
+        bus.get_object("org.bluez", ADAPTER, follow_name_owner_changes=True),
+        "org.bluez.LEAdvertisingManager1")
     loop = GLib.MainLoop()
     state = {"up": False}
 
@@ -72,6 +83,15 @@ def main():
         if state["up"]:
             print("advert lost (%s) - re-arming" % error, flush=True)
         state["up"] = False
+
+    def released():
+        if state["up"]:
+            print("advert released by BlueZ - re-arming", flush=True)
+        state["up"] = False
+
+    # THE REFERENCE IS LOAD-BEARING: without it Python collects the object, its
+    # D-Bus path disappears, and BlueZ drops the advert without a word.
+    adv = Advertisement(bus, PATH, released)
 
     # The MT7921/MT7922 is a combo Wi-Fi/BT part, so reconfiguring the radio
     # RESETS the shared Bluetooth controller and takes the advert down with
