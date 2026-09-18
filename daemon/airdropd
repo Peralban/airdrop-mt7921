@@ -1087,17 +1087,6 @@ cmd_run() {
 
   # ble-watch is only needed by the BLE-triggered path; always-on never runs
   # it, so do not make a missing one fatal for a mode that will not call it.
-  # jq IS NOT OPTIONAL on the send path. send_report_fresh and send_receiver
-  # both parse the discovery report with it, and neither checks. Without jq the
-  # receiver id comes back empty and the send exits through
-  # send_no_receiver_help, which opens with "This is nearly always the phone's
-  # state, not the radio" and sends the user off to re-arm a phone that was
-  # never the problem. That cost an hour here on a machine that simply did not
-  # have the package.
-  command -v jq >/dev/null 2>&1 || {
-    echo "airdropd: jq is required (the send path parses the discovery report with it)" >&2
-    exit 1
-  }
   local need=("$HELPER" "$CONFIRM" "$OWL" "$OPENDROP")
   [ "$ALWAYS" = 1 ] || need+=("$BLE_WATCH")
   for p in "${need[@]}"; do
@@ -1257,7 +1246,13 @@ send_report_fresh() {
   # Non-empty as JSON, not merely non-empty as a file: `[]` is 2 bytes and
   # passes -s while meaning "found nobody", and sending against it produces
   # opendrop's TypeError traceback rather than a useful message.
-  [ "$(jq 'length' "$SEND_REPORT" 2>/dev/null || echo 0)" -gt 0 ]
+  #
+  # Counted through send_peers, so our own receiver does not make a report look
+  # usable. The default matters: on an unreadable report the pipeline prints
+  # nothing, and a bare `[ "" -gt 0 ]` is an error, not a false.
+  local n
+  n=$(send_peers | jq length 2>/dev/null)
+  [ "${n:-0}" -gt 0 ]
 }
 
 # The receiver to send to: an explicit override, else the first entry in the
@@ -1288,12 +1283,21 @@ send_self_addrs() {
     | awk '/inet6/{split($2,a,"/"); print a[1]}'
 }
 
+# The discovery report minus our own receiver. Both callers must agree on what
+# counts as a peer: a report holding only us is fresh and non-empty as JSON, so
+# send_report_fresh used to accept it, skip the browse, and hand send_receiver
+# something it then filtered down to nothing. The send failed without ever
+# looking for the phone.
+send_peers() {
+  jq -c --arg me "$(uname -n)" --arg addrs "$(send_self_addrs | paste -sd, -)" '
+      ($addrs | split(",")) as $mine
+      | [ .[] | select(.name != $me and (.address as $a | $mine | index($a) | not)) ]' \
+    "$SEND_REPORT" 2>/dev/null
+}
+
 send_receiver() {
   if [ -n "${AIRDROP_RECEIVER:-}" ]; then printf '%s' "$AIRDROP_RECEIVER"; return 0; fi
-  jq -r --arg me "$(uname -n)" --arg addrs "$(send_self_addrs | paste -sd, -)" '
-      ($addrs | split(",")) as $mine
-      | [ .[] | select(.name != $me and (.address as $a | $mine | index($a) | not)) ]
-      | .[0].id // empty' "$SEND_REPORT" 2>/dev/null
+  send_peers | jq -r '.[0].id // empty' 2>/dev/null
 }
 
 send_receiver_name() {
@@ -1413,6 +1417,18 @@ cmd_send() {
     files+=("$f")
   done
   [ -x "$OPENDROP" ] || { echo "airdropd: missing or not executable: $OPENDROP" >&2; return 1; }
+  # jq IS NOT OPTIONAL HERE. send_report_fresh and send_peers both parse the
+  # discovery report with it. Without jq the receiver id comes back empty and
+  # the send exits through send_no_receiver_help, which opens with "This is
+  # nearly always the phone's state, not the radio" and sends the user off to
+  # re-arm a phone that was never the problem. That cost an hour here on a
+  # machine that simply did not have the package. Checked in cmd_send rather
+  # than cmd_run: this is the only path that needs it, and a receive-only setup
+  # must not be refused for a tool it never calls.
+  command -v jq >/dev/null 2>&1 || {
+    echo "airdropd: jq is required (the send path parses the discovery report with it)" >&2
+    return 1
+  }
 
   # ATTACH or OWN. Note the fd: cmd_run uses 9, so a send that ends up owning
   # the stack must use the same one for the lock to mean the same thing.
