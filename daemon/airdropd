@@ -1246,7 +1246,13 @@ send_report_fresh() {
   # Non-empty as JSON, not merely non-empty as a file: `[]` is 2 bytes and
   # passes -s while meaning "found nobody", and sending against it produces
   # opendrop's TypeError traceback rather than a useful message.
-  [ "$(jq 'length' "$SEND_REPORT" 2>/dev/null || echo 0)" -gt 0 ]
+  #
+  # Counted through send_peers, so our own receiver does not make a report look
+  # usable. The default matters: on an unreadable report the pipeline prints
+  # nothing, and a bare `[ "" -gt 0 ]` is an error, not a false.
+  local n
+  n=$(send_peers | jq length 2>/dev/null)
+  [ "${n:-0}" -gt 0 ]
 }
 
 # The receiver to send to: an explicit override, else the first entry in the
@@ -1256,9 +1262,42 @@ send_report_fresh() {
 # answered mDNS first. Worse, opendrop's _get_receiver_info() does int(receiver)
 # and falls through to len() on IndexError, so a short report gives a traceback
 # instead of "no such receiver". An ID cannot do either.
+# WE ARE IN OUR OWN BROWSE. On the ATTACH path the daemon's receiver is
+# advertising _airdrop._tcp on awdl0, so `opendrop find` sees it and reports
+# `name <this host>` - us. Measured on an MT7922, the browse that finally
+# worked returned:
+#
+#     Found  index 0  ID e0e8070b981d  name archlinux
+#     Found  index 1  ID 9eafac8cb802  name iPhone alban
+#
+# with the phone behind us. That poisoned both halves of the send: send_receiver
+# took .[0] and would have addressed the transfer to this machine, and
+# send_browse broke on the first `Found` line, which is always ours, so the
+# browse ended before the phone could answer.
+#
+# The service id cannot identify us: opendrop draws it at random on every start.
+# The address is exact, and the hostname covers the window where awdl0 exists
+# without one yet.
+send_self_addrs() {
+  ip -6 addr show dev awdl0 scope link 2>/dev/null \
+    | awk '/inet6/{split($2,a,"/"); print a[1]}'
+}
+
+# The discovery report minus our own receiver. Both callers must agree on what
+# counts as a peer: a report holding only us is fresh and non-empty as JSON, so
+# send_report_fresh used to accept it, skip the browse, and hand send_receiver
+# something it then filtered down to nothing. The send failed without ever
+# looking for the phone.
+send_peers() {
+  jq -c --arg me "$(uname -n)" --arg addrs "$(send_self_addrs | paste -sd, -)" '
+      ($addrs | split(",")) as $mine
+      | [ .[] | select(.name != $me and (.address as $a | $mine | index($a) | not)) ]' \
+    "$SEND_REPORT" 2>/dev/null
+}
+
 send_receiver() {
   if [ -n "${AIRDROP_RECEIVER:-}" ]; then printf '%s' "$AIRDROP_RECEIVER"; return 0; fi
-  jq -r '.[0].id // empty' "$SEND_REPORT" 2>/dev/null
+  send_peers | jq -r '.[0].id // empty' 2>/dev/null
 }
 
 send_receiver_name() {
@@ -1288,7 +1327,14 @@ send_browse() {
   local pid=$!
   for i in $(seq $((SEND_FIND_TIME * 2))); do
     kill -0 "$pid" 2>/dev/null || break
-    if grep -qE "^\s*[0-9]+\)|Found" "$flog" 2>/dev/null; then
+    # A `Found` line naming this host is our own receiver, not a peer: keep
+    # browsing rather than declaring success on ourselves.
+    if awk -v me="$(uname -n)" '
+           /^[[:space:]]*[0-9]+\)|Found/ {
+             line = $0; sub(/.*name[[:space:]]+/, "", line)
+             if (line != me) found = 1
+           }
+           END { exit !found }' "$flog" 2>/dev/null; then
       found=1
       # A beat, so a second receiver one line later is not cut off.
       sleep 2
@@ -1371,6 +1417,18 @@ cmd_send() {
     files+=("$f")
   done
   [ -x "$OPENDROP" ] || { echo "airdropd: missing or not executable: $OPENDROP" >&2; return 1; }
+  # jq IS NOT OPTIONAL HERE. send_report_fresh and send_peers both parse the
+  # discovery report with it. Without jq the receiver id comes back empty and
+  # the send exits through send_no_receiver_help, which opens with "This is
+  # nearly always the phone's state, not the radio" and sends the user off to
+  # re-arm a phone that was never the problem. That cost an hour here on a
+  # machine that simply did not have the package. Checked in cmd_send rather
+  # than cmd_run: this is the only path that needs it, and a receive-only setup
+  # must not be refused for a tool it never calls.
+  command -v jq >/dev/null 2>&1 || {
+    echo "airdropd: jq is required (the send path parses the discovery report with it)" >&2
+    return 1
+  }
 
   # ATTACH or OWN. Note the fd: cmd_run uses 9, so a send that ends up owning
   # the stack must use the same one for the lock to mean the same thing.
