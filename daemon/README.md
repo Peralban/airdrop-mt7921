@@ -168,10 +168,11 @@ and the receiver is already up.
 
 ### Sending
 
-**Never yet run against a phone** (see
-[Known-good and not-yet-proven](#known-good-and-not-yet-proven)). The only
-proven way to send is `ACTIVE=1 ./airdrop.sh send <file>`, which takes the card
-exclusively.
+**Proven on an MT7922, not yet on the MT7921** (see
+[Known-good and not-yet-proven](#known-good-and-not-yet-proven)). On the
+MT7921 the only proven way to send is still `ACTIVE=1 ./airdrop.sh send <file>`,
+which takes the card exclusively. Sending needs `jq`, which parses the
+discovery report; `airdropd send` refuses to start without it.
 
 ```sh
 daemon/airdropd send photo.jpg          # terminal
@@ -329,6 +330,13 @@ advertising `36,36,149,0,0,0,0,36,6,36,149,36,0,0,0,36` with the AP on 36:
 following the peer to its dominant 149 gives 2/16 overlap and moved zero bytes
 in 60 s, while the station's own 36 is 6/16 of the same sequence and is the
 pairing that holds the association.
+
+**Prefer `auto` to pinning a channel**, even though pinning feels like the safe
+choice. On an MT7922 ([#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2)),
+a GO on the AP's own channel measured 2 to 8 ms gateway latency, against 59 to
+66 ms with the GO pinned to ch44 while the station held ch36. `auto` also
+follows the station to a new network with no help: moving from an AP on ch36
+to one on ch149, the GO came up on ch149 by itself.
 
 An **unreadable** station is not a fallback case — it used to be, and that was
 the bug described two sections down. It now refuses and waits.
@@ -502,8 +510,27 @@ For a receive that is proven to complete right now, use the standalone
 `airdrop.sh` exclusive path (a full 2.56 MB photo, byte-exact, PIL-verified),
 not the daemon. It drops your Wi-Fi for the duration.
 
-**`airdropd send` has never been run against a phone.** Written 2026-08-11. What
-*is* verified is everything that does not need one: argument and permission
+**`airdropd send` has sent to a phone from an MT7922** (`14c3:0616`), by the
+same contributor, in [#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2)
+and [#9](https://github.com/jedbillyb/airdrop-mt7921/pull/9). Measured on
+2026-09-17 and again on 2026-09-18 on a second network (the AP on ch36, then
+on ch149), both times on the ATTACH path: the always-on stack in P2P-GO mode
+with `AIRDROP_GO_CHAN=auto`, no `ACTIVE=1`, and the station associated
+throughout. Eight seconds from the start of the browse to the file arriving on
+the handset. Two bugs had to be fixed first, both in #9: nothing checked for
+`jq`, and the browse stopped on our own receiver, which opendrop listed before
+the phone in every run.
+
+**Every successful send had the bluetoothd advert from
+[#8](https://github.com/jedbillyb/airdrop-mt7921/pull/8) running alongside.**
+One minute before the 2026-09-18 send, the same phone on the same network was
+not found with only the daemon's own `btmgmt` advert. On that card
+`btmgmt add-adv` either fails to register after `airdrop.sh`'s layer 1 or
+registers and goes unseen. Until #8 lands, treat the daemon's advert as
+unproven for sending.
+
+**Not yet run against a phone on the MT7921 here.** Checked 2026-08-11 is
+everything that does not need one: argument and permission
 failures all exit before touching the lock or the radio; the helper's `ble-adv`
 rejects non-hex, odd-length, over-long and empty data before reaching `btmgmt`,
 and registers/removes an advert cleanly (0 → 1 → 0 instances); the report
@@ -512,10 +539,10 @@ rejects `[]`, which passes `-s` while meaning "found nobody"; the Thunar
 installer round-trips (install → idempotent re-run → remove) to a byte-identical
 file with the user's existing actions intact.
 
-None of that is a transfer. The send *direction* has only ever completed via
-`airdrop.sh` (§37), and the discovery gates in §22 are the phone's, so the first
-live run should be a single small file with the phone freshly set to Everyone
-and the share sheet closed.
+None of that is a transfer. On the MT7921 the send *direction* has only ever
+completed via `airdrop.sh` (§37), and the discovery gates in §22 are the
+phone's, so the first live run here should be a single small file with the
+phone freshly set to Everyone and the share sheet closed.
 
 ## Limitations
 
@@ -561,7 +588,8 @@ Current, honest, and roughly in the order you are likely to hit them.
 11. **`~/owl/.venv-opendrop` is not version controlled.** Every opendrop fix
     lives in `patches/` and must be reapplied after a venv rebuild.
 12. **A sustained AWDL session can take the station link down.** Measured on
-    an MT7922 in [#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2),
+    an MT7922 in [#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2)
+    and tracked in [#7](https://github.com/jedbillyb/airdrop-mt7921/issues/7),
     not yet checked on the MT7921 here, though the driver code involved is
     shared. One to five minutes into an active session with a peer,
     `wpa_supplicant` logs `CTRL-EVENT-BEACON-LOSS` once a second; the station
