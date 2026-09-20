@@ -427,3 +427,25 @@ legitimately end in nulls, and a heuristic would eat them.
 Verified against both transfers above - the computed offset matched the
 hand-measured end of the image to the byte, and ffmpeg decodes the trimmed
 files with only the `overread` a truncated JPEG is expected to give.
+
+## opendrop-send-multifile.patch
+
+`-f,--file` took exactly one path, so sending five files meant five transfers
+and **five separate Accepts on the phone**. The protocol never required that:
+`send_ask` already builds one entry per file and the receiver accepts the set in
+a single `/Ask`, so the limitation was in the command line and in a caller that
+had to loop around it.
+
+`-f` becomes repeatable (`action="append"`), and `send_upload` iterates the list
+it is given instead of wrapping a single path in a one-element list. A single
+`-f` still yields a one-element list, so every existing caller behaves exactly
+as before.
+
+`-u,--url` rejects more than one `-f`: a URL send carries one item by
+construction, and silently dropping the rest would be worse than refusing.
+Each path is checked for existence before anything is brought up, so a typo in
+the fifth file fails immediately rather than after four transfers.
+
+Verified by reverse-applying against a venv carrying the thirteen patches ahead
+of it. The daemon side of this lives in `daemon/airdropd`, whose `send_one` now
+passes every file in one invocation.

@@ -1403,10 +1403,15 @@ Try again with the AirDrop toggle OFF, which gives the send its own stack."
   return 0
 }
 
+# ONE TRANSFER, however many files. opendrop's `-f` is repeatable and the
+# protocol carries the lot in a single /Ask, so the phone asks once instead of
+# once per file. This used to loop, because `-f` took exactly one file.
 send_one() {
-  local file="$1" rcv="$2"
-  log "send: $file -> $rcv"
-  "$OPENDROP" -i awdl0 send -r "$rcv" -f "$file" >> "$LOG" 2>&1
+  local rcv="$1"; shift
+  local f args=()
+  for f in "$@"; do args+=(-f "$f"); done
+  log "send: $* -> $rcv"
+  "$OPENDROP" -i awdl0 send -r "$rcv" "${args[@]}" >> "$LOG" 2>&1
 }
 
 # Everything the user needs to do on the phone, in one place. Printed on the
@@ -1548,37 +1553,29 @@ cmd_send() {
   name=$(send_receiver_name "$rcv")
   echo "sending to ${name:-$rcv}"
 
-  local first=1
-  for f in "${files[@]}"; do
-    if send_one "$f" "$rcv"; then
-      echo "sent: $(basename "$f")"
-    elif [ "$first" = 1 ] && [ "$browsed" = 0 ]; then
-      # THE SELF-CORRECTION the reused report is only safe because of. The one
-      # plausible reason a first send fails against a reused report is that the
-      # report is stale - the phone moved, slept, or re-armed with a new ID -
-      # so browse once and try that file again. Only on the FIRST file, and
-      # only when we did not already browse: a failure after a fresh browse is
-      # a real failure and retrying it just doubles the wait.
-      log "send: first send failed on a reused report - re-browsing"
-      browsed=1
-      if send_browse && rcv=$(send_receiver) && [ -n "$rcv" ] && send_one "$f" "$rcv"; then
-        echo "sent: $(basename "$f")"
-      else
-        echo "FAILED: $(basename "$f")" >&2
-        rc=1
-      fi
+  local what
+  what=$(printf '%s, ' "${files[@]##*/}"); what="${what%, }"
+
+  if send_one "$rcv" "${files[@]}"; then
+    echo "sent: $what"
+  elif [ "$browsed" = 0 ]; then
+    # THE SELF-CORRECTION the reused report is only safe because of. The one
+    # plausible reason a send fails against a reused report is that the report
+    # is stale - the phone moved, slept, or re-armed with a new ID - so browse
+    # once and try again. Only when we did not already browse: a failure after
+    # a fresh browse is a real failure and retrying it just doubles the wait.
+    log "send: failed on a reused report - re-browsing"
+    if send_browse && rcv=$(send_receiver) && [ -n "$rcv" ] \
+       && send_one "$rcv" "${files[@]}"; then
+      echo "sent: $what"
     else
-      echo "FAILED: $(basename "$f")" >&2
+      echo "FAILED: $what" >&2
       rc=1
     fi
-    first=0
-  done
-
-  # Each file is its own transfer and its own Accept on the phone: opendrop's
-  # `-f` takes exactly one file and there is no multi-file request in it. Worth
-  # saying out loud, because selecting five files in Thunar and then being
-  # asked five times looks like a bug if you were not told.
-  [ "${#files[@]}" -gt 1 ] && echo "(${#files[@]} files = ${#files[@]} separate transfers, one Accept each)"
+  else
+    echo "FAILED: $what" >&2
+    rc=1
+  fi
 
   return $rc
 }
