@@ -48,6 +48,11 @@ HELPER="${AIRDROP_HELPER:-/usr/local/bin/airdrop-helper}"
 BLE_WATCH="${AIRDROP_BLE_WATCH:-/usr/local/bin/airdrop-ble-watch}"
 [ -x "$BLE_WATCH" ] || BLE_WATCH="$HERE/ble-watch"
 CONFIRM="${AIRDROP_CONFIRM:-$HERE/airdrop-confirm}"
+# EXPORTED, because airdrop-confirm reads it and runs as a child of
+# opendrop, not of this script. Sourcing ~/.config/airdrop/config sets the
+# variable in this shell only, so a value put where the README tells people
+# to put settings would never reach the prompt that uses it.
+export AIRDROP_CONFIRM_UI="${AIRDROP_CONFIRM_UI:-auto}"
 # Where a received LINK goes. AirDrop delivers a shared URL in the /Ask body
 # rather than as a file, so it never reaches RECV_DIR and needs its own
 # handler - this one opens it in a browser. Unset AIRDROP_URL_HOOK to fall
