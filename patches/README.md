@@ -406,3 +406,24 @@ received stayed in the buffer. The class-level placement is what matters:
 peer stalling there hung with no prompt on screen and nothing in the log.
 
 Applied last, since it touches `server.py` after every other patch has.
+
+## opendrop-salvage-trim.patch
+
+`salvage-truncated` marks an incomplete member `.partial` but keeps the file
+libarchive wrote, and libarchive pads a truncated member out to its declared
+size. The guarantee therefore held in name only: measured on two interrupted
+transfers, a 1,781,751-byte photo carried 524,288 bytes of image and 1,257,463
+bytes of nulls behind it, and a second carried 2,229,412 of 3,404,207. Nothing
+in the file says where the picture stops, so every reader walks into padding.
+
+The archive already knows. A truncated member is exactly the one whose
+`data_off + filesize` runs past the end of what was received, so the bytes that
+did arrive are `n - data_off`. `odc_members` now returns that count and
+`verify_extracted` truncates to it before renaming.
+
+Cutting at that offset rather than stripping trailing zeros matters: a file may
+legitimately end in nulls, and a heuristic would eat them.
+
+Verified against both transfers above - the computed offset matched the
+hand-measured end of the image to the byte, and ffmpeg decodes the trimmed
+files with only the `overread` a truncated JPEG is expected to give.
