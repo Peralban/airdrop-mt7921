@@ -58,8 +58,11 @@ class Advertisement(dbus.service.Object):
         # registered advert, which calls Release here and frees the object
         # (src/advertising.c). The controller comes back with no adverts at
         # all. Without clearing the flag, arm() below still believes we are up
-        # and never registers again, which is precisely the combo-chip reset
-        # this tool exists to survive.
+        # and never registers again.
+        #
+        # Not observed on this hardware: across three reset events the advert
+        # was never released. Kept because it is the only notice BlueZ gives,
+        # and an advert that is gone without one is expensive to diagnose.
         self.on_release()
 
 
@@ -93,11 +96,22 @@ def main():
     # D-Bus path disappears, and BlueZ drops the advert without a word.
     adv = Advertisement(bus, PATH, released)
 
-    # The MT7921/MT7922 is a combo Wi-Fi/BT part, so reconfiguring the radio
-    # RESETS the shared Bluetooth controller and takes the advert down with
-    # it - which is exactly what airdrop.sh's layer 1 does, and why a
-    # register-once script is silently dead by the time the browse runs.
-    # Re-arming on a timer makes the launch order irrelevant.
+    # A SAFEGUARD, NOT A FIX FOR A KNOWN FAILURE. The combo-chip argument this
+    # started from does not survive measurement: across three separate reset
+    # events on the MT7922 - a layer 1 radio sweep, an `hci0` power cycle and a
+    # `modprobe -r mt7921e` - the advert stayed registered every time, and
+    # `Release` was never called. Resetting the Wi-Fi side does not take
+    # bluetoothd's advert down here.
+    #
+    # What is measured, and what actually motivates this script, is on the
+    # btmgmt side: after layer 1 `btmgmt add-adv` fails outright with "failed to
+    # register the advertising instance", and on the occasions it does register,
+    # the phone still does not react to it. Going through
+    # LEAdvertisingManager1 avoids both.
+    #
+    # The timer and the Release handler stay because neither costs anything and
+    # an advert that disappears without a word is expensive to diagnose - not
+    # because either is answering a failure observed on this hardware.
     def arm():
         if not state["up"]:
             try:
