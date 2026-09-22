@@ -75,14 +75,25 @@ def main():
         bus.get_object("org.bluez", ADAPTER, follow_name_owner_changes=True),
         "org.bluez.LEAdvertisingManager1")
     loop = GLib.MainLoop()
-    state = {"up": False}
+    # `pending` exists because RegisterAdvertisement is ASYNCHRONOUS and `up` is
+    # only set when its reply arrives. With nothing marking the call in flight, a
+    # reply slower than the 3 s timer got a second registration on top of the
+    # first: reply one succeeded and set `up`, reply two came back
+    # AlreadyExists, and `ko` then reported the advert lost and cleared `up`.
+    # From there every tick re-registered, got AlreadyExists again, and printed
+    # "advert lost" once every three seconds - while the advert was up and
+    # working the whole time. That output is indistinguishable from a real loss,
+    # which is the exact diagnostic cost the timer was added to avoid.
+    state = {"up": False, "pending": False}
 
     def ok():
+        state["pending"] = False
         if not state["up"]:
             print("advert up", flush=True)
         state["up"] = True
 
     def ko(error):
+        state["pending"] = False
         if state["up"]:
             print("advert lost (%s) - re-arming" % error, flush=True)
         state["up"] = False
@@ -113,12 +124,17 @@ def main():
     # an advert that disappears without a word is expensive to diagnose - not
     # because either is answering a failure observed on this hardware.
     def arm():
-        if not state["up"]:
+        if not state["up"] and not state["pending"]:
+            state["pending"] = True
             try:
                 manager.RegisterAdvertisement(
                     PATH, dbus.Dictionary({}, signature="sv"),
                     reply_handler=ok, error_handler=ko)
             except Exception as exc:
+                # Cleared here too: a throw at call time means no reply is
+                # coming, and leaving the flag set would wedge the timer shut -
+                # trading a false "lost" for a real one nobody ever reports.
+                state["pending"] = False
                 print("register: %s" % exc, file=sys.stderr, flush=True)
         return True
 
