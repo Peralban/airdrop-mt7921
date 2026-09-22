@@ -975,9 +975,28 @@ serve_forever() {
           kept=$(printf '%s' "$last_over" | grep -oP 'overlap: \K[0-9]+')
           # Which of the two is the CURRENT state - compared by owl's own
           # timestamps, since at -vv no fixed byte window means anything.
-          overlapping=1
-          [ -n "$last_none" ] && [ "${last_none%% *}" \> "${last_over%% *}" ] \
-            && overlapping=""
+          #
+          # DECIDED FROM WHAT WAS FOUND, not from a comparison an empty value
+          # loses by accident. owl logs the overlap count only under the
+          # `intersect` channel-sequence strategy; under `widen`, which is what
+          # this daemon runs, it logs neither line. `last_over` is then empty on
+          # every tick, the test below had a real timestamp on one side and ""
+          # on the other, and "" loses every string comparison - so the NO
+          # OVERLAP branch was taken unconditionally and the bar published
+          # `unreachable` with a hardcoded 0/16 from a log that had said nothing
+          # at all. A rotated log, a fresh one, or an owl that has not spoken
+          # yet all produce the same silent claim.
+          if [ -z "$last_none" ] && [ -z "$last_over" ]; then
+            overlapping=unknown
+          elif [ -z "$last_over" ]; then
+            overlapping=""
+          elif [ -z "$last_none" ]; then
+            overlapping=1
+          elif [ "${last_none%% *}" \> "${last_over%% *}" ]; then
+            overlapping=""
+          else
+            overlapping=1
+          fi
 
           # THE ONE LINE THAT HAS ALL THREE CHANNELS IN IT. Until now the
           # station's channel, the GO's channel and the peer's lived in three
@@ -991,7 +1010,11 @@ serve_forever() {
           # overlap, owl reports the count and not the peer's dominant channel,
           # so the last known value is marked ~stale rather than reprinted as
           # though it were current.
-          if [ -n "$overlapping" ]; then
+          if [ "$overlapping" = unknown ]; then
+            # Say so rather than pick a side. "0/16" here would be a measurement
+            # nobody took.
+            log "CHAN sta=ch${sta_now:-?} go=ch$BUILT_CHAN peer=ch? overlap=? (owl has logged neither line)"
+          elif [ -n "$overlapping" ]; then
             log "CHAN sta=ch${sta_now:-?} go=ch$BUILT_CHAN peer=ch${want:-?}~stale overlap=${kept:-0}/16"
           else
             log "CHAN sta=ch${sta_now:-?} go=ch$BUILT_CHAN peer=ch${want:-?} overlap=0/16"
