@@ -1553,8 +1553,15 @@ cmd_send() {
   name=$(send_receiver_name "$rcv")
   echo "sending to ${name:-$rcv}"
 
-  local what
+  local what count
   what=$(printf '%s, ' "${files[@]##*/}"); what="${what%, }"
+  count=${#files[@]}
+  # SAY THE COUNT ON THE WAY OUT. Being asked five times for five files used to
+  # look like a bug, and the line that warned about it is gone because it no
+  # longer happens. The inverse needs saying just as much: one Accept covering
+  # five files reads as four of them having been dropped unless the count is
+  # named. Only past one, since "1 file in one transfer" is noise.
+  [ "$count" -gt 1 ] && what="$what ($count files in one transfer)"
 
   if send_one "$rcv" "${files[@]}"; then
     echo "sent: $what"
