@@ -970,9 +970,14 @@ serve_forever() {
           # NO OVERLAP branch, and the bar published `unreachable` with a
           # hardcoded 0/16 while owl was reporting up to 8/16. Every
           # channel-chasing decision downstream rested on that.
-          last_over=$(grep -aE "overlap: [0-9]+/16 slots" "$OWL_LOG" 2>/dev/null | tail -1)
+          # BOTH SPELLINGS. Upstream owl writes "intersect: N/M slots overlap
+          # ..." and only under the intersect strategy; the build here also
+          # writes "overlap: ..." under widen, which is the strategy this daemon
+          # actually runs. Matching either means the same daemon works against
+          # both, rather than silently reporting nothing on one of them.
+          last_over=$(grep -aE "(intersect|overlap): [0-9]+/[0-9]+ slots" "$OWL_LOG" 2>/dev/null | tail -1)
           want=$(printf '%s' "$last_none" | grep -oP 'peer wants ch \K[0-9]+')
-          kept=$(printf '%s' "$last_over" | grep -oP 'overlap: \K[0-9]+')
+          kept=$(printf '%s' "$last_over" | grep -oP '(?:intersect|overlap): \K[0-9]+')
           # Which of the two is the CURRENT state - compared by owl's own
           # timestamps, since at -vv no fixed byte window means anything.
           #
