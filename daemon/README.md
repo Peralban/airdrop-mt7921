@@ -34,7 +34,7 @@ trade worth making for a switch that just works with no second step.
 |---|---|
 | `ble-watch` | Detects Apple Continuity **AirDrop** adverts (company `0x004C`, type `0x05`) by parsing `btmon`. Prints one JSON line per sighting. |
 | `airdrop-helper` | The **only** privileged entry point. `up` / `down` / `status` / `ap-channel` / `wifi-reset`, plus `go-up` / `go-down` / `owl-start` / `owl-stop` / `avahi-down` / `avahi-up` for the P2P-GO path, and `ble-adv` / `ble-adv-stop` / `ble-adv-count` for the send path's Continuity advert. |
-| `airdrop-confirm` | Asks the user whether to accept an incoming file: `hyprland-dialog` on Hyprland, `swaynag` on sway, otherwise a notification with Accept/Decline actions. Anything but an explicit Accept declines. |
+| `airdrop-confirm` | Asks the user whether to accept an incoming file, via the compositor's dialog, a notification or swaynag: `hyprland-dialog` on Hyprland, `swaynag` on sway, otherwise a notification with Accept/Decline actions. `AIRDROP_CONFIRM_UI` pins one of them. Anything but an explicit Accept declines. |
 | `airdropd` | Orchestrator. BLE mode: trigger → stack up → advertise → confirm → tear down. Always-on mode: stack up → advertise → confirm, staying up until stopped, with a health watch over it. Also `send`, below. |
 | `airdrop-send` | Desktop wrapper around `airdropd send`: same thing with `notify-send` progress. What the Thunar right-click runs. |
 | `thunar-action.xml` | The right-click menu entry, installed by `../tools/install-thunar-action.sh`. |
@@ -287,6 +287,7 @@ label is evidence that *the click landed*, not that anything is working. Check
 | `AIRDROP_MIN_RSSI` | `-70` | Ignore faint adverts. A transfer happens at arm's length; a weak advert is a stranger's phone and waking the radio for it is pure cost. |
 | `AIRDROP_WINDOW` | `90` | How long to stay up after a trigger. Also the worst case for how long the radio is committed. |
 | `AIRDROP_CONFIRM_TIMEOUT` | `45` | Unanswered prompt → decline. Always-on mode overrides this to `15`, so one unanswered prompt cannot fill the listen backlog. |
+| `AIRDROP_CONFIRM_UI` | `auto` | Which prompt asks for consent: `auto` runs the cascade (compositor dialog → notification → swaynag), or name one of `dialog`/`notify`/`swaynag` to use only that one. An explicit choice fails closed rather than substituting another prompt for a security question. |
 | `AIRDROP_DUALCHAN` | `0` | Set `1` to use P2P-GO mode instead of the default AP-channel-borrowing mode. See below. |
 | `AIRDROP_GO_CHAN` | `auto` | Which channel `go0` sits on in P2P-GO mode. `auto` runs the full precedence below; an explicit value must be one of `6/36/44/149`. Never rewritten at runtime — the channel currently built is tracked separately, and conflating the two is what once turned `auto` into a constant after the first correction. |
 | `AIRDROP_GO_FOLLOW` | `1` | Whether the wrong-channel watch may rebuild the GO on the peer's channel after `AIRDROP_WRONGCHAN_AFTER` seconds of zero overlap. `0` warns and stays put. Under station-first precedence the common answer is "stay" either way. |
