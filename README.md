@@ -8,7 +8,7 @@ with no Apple ID and no signed identity. This repo is the script that sets it up
 the OpenDrop patches that make iOS 26 transfers parse and send, and the research
 that got there.
 
-> **Personal project.** This is my own work, done on my own laptop, published in case it is useful. It is not affiliated with the Open Wireless Link project, OpenDrop, or Apple. There is no warranty, and no promise that it works on your hardware. Issues and PRs may be slow to respond, but I do try to help when I can.
+> **Independent project.** It started as my own work on my own laptop, and it is now built together with [Alban Peralta](https://github.com/Peralban), who brought it to the MT7922 and wrote much of the sending path (see [Credit](#credit)). It is published in case it is useful, and it is not affiliated with the Open Wireless Link project, OpenDrop, or Apple. There is no warranty, and no promise that it works on your hardware. Issues and PRs may be slow to respond, but I do try to help when I can.
 
 ## Support
 
@@ -185,7 +185,7 @@ invisible no matter what AirDrop is set to.
 
 ### Sending from the file manager
 
-**Proven on an MT7922, not yet on the MT7921.** A contributor has sent to an
+**Proven on an MT7922, not yet on the MT7921.** Alban Peralta has sent to an
 iPhone through `airdropd send`, attached to the always-on stack, with Wi-Fi up
 the whole time and nothing taking the card exclusively
 ([#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2),
@@ -434,6 +434,25 @@ restores your networking afterwards. `activelate2.sh` and `activelate3.sh` are
 the two that establish the pair configuration this whole project rests on.
 
 ## Credit
+
+**[Alban Peralta](https://github.com/Peralban)**, co-developer. Everything
+this project knows about the MT7922 comes from their hardware and their
+measurements. On the code side:
+
+- portability fixes and two OpenDrop patches, from an MT7922 on Hyprland ([#1](https://github.com/jedbillyb/airdrop-mt7921/pull/1))
+- `tools/beaconwatch.sh`, which tells you why the station died ([#5](https://github.com/jedbillyb/airdrop-mt7921/pull/5))
+- configurable paths and service manager in `tools/` ([#6](https://github.com/jedbillyb/airdrop-mt7921/pull/6))
+- `tools/blewake-dbus.py`, the Continuity advert through bluetoothd ([#8](https://github.com/jedbillyb/airdrop-mt7921/pull/8))
+- the send path no longer discovers itself ([#9](https://github.com/jedbillyb/airdrop-mt7921/pull/9))
+- the channel watch no longer reports `unreachable` from an empty log ([#13](https://github.com/jedbillyb/airdrop-mt7921/pull/13))
+
+Their reports ([#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2),
+[#7](https://github.com/jedbillyb/airdrop-mt7921/issues/7),
+[#15](https://github.com/jedbillyb/airdrop-mt7921/issues/15)) gave the
+project its first always-on receive and its first daemon send on an MT7922,
+and turned up real bugs in the daemon.
+
+Built on:
 
 - [seemoo-lab/owl](https://github.com/seemoo-lab/owl) - the AWDL implementation
 - [seemoo-lab/opendrop](https://github.com/seemoo-lab/opendrop) - the AirDrop layer
