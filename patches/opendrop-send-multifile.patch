@@ -1,6 +1,6 @@
 --- a/opendrop/cli.py
 +++ b/opendrop/cli.py
-@@ -41,7 +41,14 @@
+@@ -49,7 +49,14 @@
      def __init__(self, args):
          parser = argparse.ArgumentParser()
          parser.add_argument("action", choices=["receive", "find", "send"])
@@ -16,7 +16,7 @@
          parser.add_argument(
              "-u", "--url", help="'-f,--file is a URL", action="store_true"
          )
-@@ -101,10 +108,14 @@
+@@ -110,10 +117,14 @@
              elif args.action == "find":
                  self.find()
              else:  # args.action == 'send'
@@ -36,7 +36,50 @@
                  if args.receiver is None:
 --- a/opendrop/client.py
 +++ b/opendrop/client.py
-@@ -357,8 +357,13 @@
+@@ -283,11 +283,24 @@
+             ask_body["SenderRecordData"] = self.config.record_data
+ 
+         def file_entries(files):
++            # ONE SNIFF PER FILE. `flp` used to be computed once, from
++            # file_path[0], in the icon block below, and every entry was
++            # announced with that type. With a single file it is always right,
++            # which is why it survived; with several it is right only when they
++            # happen to share a type. A PNG and a PDF in one transfer had the
++            # PDF announced as public.image.
++            #
++            # FileType is what the receiver routes on, so this is not cosmetic:
++            # four files out of five land wrong while the first one looks
++            # perfect, which is the kind of failure that gets reported months
++            # later as AirDrop mangling things.
+             for file in files:
++                with open(file, "rb") as handle:
++                    entry_flp = fleep.get(handle.read(128))
+                 file_name = os.path.basename(file)
+                 file_entry = {
+                     "FileName": file_name,
+-                    "FileType": AirDropUtil.get_uti_type(flp),
++                    "FileType": AirDropUtil.get_uti_type(entry_flp),
+                     "FileBomPath": os.path.join(".", file_name),
+                     "FileIsDirectory": os.path.isdir(file_name),
+                     "ConvertMediaFormats": 0,
+@@ -299,11 +312,12 @@
+         if is_url:
+             ask_body["Items"] = file_path
+         else:
+-            # generate icon for first file
++            # The icon stays the first file's - one transfer, one thumbnail.
++            # Only the icon is decided here now; the per-entry types are sniffed
++            # in file_entries above.
+             with open(file_path[0], "rb") as f:
+-                file_header = f.read(128)
+-                flp = fleep.get(file_header)
+-                if not icon and len(flp.mime) > 0 and "image" in flp.mime[0]:
++                first_flp = fleep.get(f.read(128))
++                if not icon and len(first_flp.mime) > 0 and "image" in first_flp.mime[0]:
+                     icon = AirDropUtil.generate_file_icon(f.name)
+             ask_body["Files"] = [e for e in file_entries(file_path)]
+         if icon:
+@@ -357,8 +371,13 @@
  
      def send_upload(self, file_path, is_url=False, reask=None):
          """
@@ -51,7 +94,7 @@
          # Don't send an upload request if we just sent a link
          if is_url:
              return
-@@ -510,7 +515,12 @@
+@@ -510,7 +529,12 @@
                  filter_name="gzip" if compress else None,
                  archive_write_class=AbsArchiveWrite,
              ) as archive:

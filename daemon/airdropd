@@ -1411,7 +1411,10 @@ send_one() {
   local f args=()
   for f in "$@"; do args+=(-f "$f"); done
   log "send: $* -> $rcv"
-  "$OPENDROP" -i awdl0 send -r "$rcv" "${args[@]}" >> "$LOG" 2>&1
+  # AIRDROP_SEND_DEBUG dumps opendrop's request plists under ~/.opendrop/debug,
+  # which is the only way to see what went into an /Ask after the fact. Off by
+  # default: the dump is per-request and would otherwise grow without bound.
+  "$OPENDROP" ${AIRDROP_SEND_DEBUG:+-d} -i awdl0 send -r "$rcv" "${args[@]}" >> "$LOG" 2>&1
 }
 
 # Everything the user needs to do on the phone, in one place. Printed on the
