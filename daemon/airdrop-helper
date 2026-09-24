@@ -491,10 +491,11 @@ EOF
     echo '{"ok":true}'
     ;;
 
-  # The registered instance is the test, NOT whether some process is alive
-  # (§36): the mt7921 is a combo Wi-Fi/BT part, so bringing the radio up resets
-  # the shared controller and the advert dies while its launcher carries on
-  # looking healthy. Callers check this before and after a bring-up.
+  # Total advertising instances registered on the controller. Post-bring-up
+  # sanity check (§36): the mt7921 is a combo Wi-Fi/BT part, so bringing the
+  # radio up resets the shared controller and kills any advert started
+  # beforehand; zero here confirms the wipe. Counts all instances across the
+  # controller without distinguishing owners (#15).
   ble-adv-count)
     timeout 5 btmgmt advinfo 2>/dev/null \
       | grep -oP 'Instances list with \K[0-9]+' || echo 0
