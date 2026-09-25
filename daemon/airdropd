@@ -1237,9 +1237,10 @@ SEND_REPORT_TTL="${AIRDROP_SEND_REPORT_TTL:-90}"
 # bringing the radio up resets the shared controller (§36).
 #
 # Always registers rather than branching on ble-adv-count: the controller's
-# instance count does not distinguish ours from other callers (#15), and ble-adv
-# is idempotent (removes instance 1 before adding). SEND_ADV_OURS remains the
-# single source of truth for ownership so teardown only removes an advert we set.
+# instance count does not distinguish ours from other callers (#15), so a count
+# above zero was never evidence that OUR advert was up. ble-adv now claims the
+# lowest free instance and records it, so registering cannot displace another
+# tool's advert and teardown only removes the one we took.
 #
 # Non-fatal throughout. §22 could not establish that the advert does anything -
 # the one experiment was confounded by a phone whose AWDL was already awake -
