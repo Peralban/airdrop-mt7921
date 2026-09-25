@@ -448,6 +448,7 @@ measurements. On the code side:
 - `AIRDROP_CONFIRM_UI`, to pick how the accept prompt appears ([#10](https://github.com/jedbillyb/airdrop-mt7921/pull/10))
 - the channel watch no longer reports `unreachable` from an empty log ([#13](https://github.com/jedbillyb/airdrop-mt7921/pull/13))
 - salvaged partial files are trimmed to the bytes that actually arrived ([#14](https://github.com/jedbillyb/airdrop-mt7921/pull/14))
+- several files go in one transfer and one Accept, each announced with its own type ([#12](https://github.com/jedbillyb/airdrop-mt7921/pull/12))
 
 Their reports ([#2](https://github.com/jedbillyb/airdrop-mt7921/issues/2),
 [#7](https://github.com/jedbillyb/airdrop-mt7921/issues/7),
