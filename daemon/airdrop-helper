@@ -132,12 +132,33 @@ BLE_STATE=/run/airdrop-ble-instance
 # run that died before teardown, and an advert nobody owns keeps broadcasting
 # indefinitely while showing up in no UI.
 ble_pick_instance() {
-  local info used max mine i
+  local info max count used n mine i
   info=$(timeout 5 btmgmt advinfo 2>/dev/null) || return 1
-  max=$(printf '%s\n' "$info" | grep -oP '^\s*Max instances:\s*\K[0-9]+' | head -1)
+  max=$(printf '%s\n' "$info" | grep -oP 'Max instances:\s*\K[0-9]+' | head -1)
   [ -n "$max" ] && [ "$max" -gt 0 ] || return 1
-  used=$(printf '%s\n' "$info" | grep -oP '^\s*Instance:\s*\K[0-9]+')
 
+  # The list follows the "Instances list with N item(s)" line, one id per line.
+  # The exact rendering of those lines is btmgmt's business and has changed
+  # shape before, so read the first integer of each and check what we got
+  # against the count btmgmt itself declared.
+  count=$(printf '%s\n' "$info" | grep -oP 'Instances list with\s*\K[0-9]+' | head -1)
+  count=${count:-0}
+  used=$(printf '%s\n' "$info" | sed -n '/Instances list with/,$p' | tail -n +2 \
+         | grep -oP '^\s*(Instance:\s*)?\K[0-9]+')
+  n=$(printf '%s\n' "$used" | grep -c '[0-9]')
+
+  # If the two disagree we cannot say WHICH instances are taken, and guessing
+  # wrong is how we would remove somebody else's advert (#15). The kernel hands
+  # instances out from 1 upward, so treat the first `count` as taken and look
+  # above them: that gives up a free low slot, which costs nothing, rather than
+  # risking a slot that is not ours.
+  if [ "$n" -ne "$count" ]; then
+    used=$(seq 1 "$count" 2>/dev/null)
+  fi
+
+  # An instance still listed and still named by our record is a leftover of ours
+  # from a run that died before teardown. Reclaim it rather than leak it: an
+  # advert nobody owns keeps broadcasting indefinitely and shows up in no UI.
   mine=$(cat "$BLE_STATE" 2>/dev/null)
   case "$mine" in
     ''|*[!0-9]*) mine= ;;
