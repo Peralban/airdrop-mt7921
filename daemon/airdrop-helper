@@ -132,7 +132,7 @@ BLE_STATE=/run/airdrop-ble-instance
 # run that died before teardown, and an advert nobody owns keeps broadcasting
 # indefinitely while showing up in no UI.
 ble_pick_instance() {
-  local info max count used n mine i
+  local info max count used n i
   info=$(timeout 5 btmgmt advinfo 2>/dev/null) || return 1
   max=$(printf '%s\n' "$info" | grep -oP 'Max instances:\s*\K[0-9]+' | head -1)
   [ -n "$max" ] && [ "$max" -gt 0 ] || return 1
@@ -156,19 +156,18 @@ ble_pick_instance() {
     used=$(seq 1 "$count" 2>/dev/null)
   fi
 
-  # An instance still listed and still named by our record is a leftover of ours
-  # from a run that died before teardown. Reclaim it rather than leak it: an
-  # advert nobody owns keeps broadcasting indefinitely and shows up in no UI.
-  mine=$(cat "$BLE_STATE" 2>/dev/null)
-  case "$mine" in
-    ''|*[!0-9]*) mine= ;;
-  esac
-  if [ -n "$mine" ] && printf '%s\n' "$used" | grep -qx "$mine"; then
-    timeout 10 btmgmt rm-adv "$mine" </dev/null >/dev/null 2>&1 || true
-    printf '%s\n' "$mine"
-    return 0
-  fi
-
+  # NO RECLAIM OF A RECORDED INSTANCE. An earlier version treated "recorded in
+  # BLE_STATE and currently listed" as proof the advert was ours and removed it
+  # first. A listed instance number proves nothing: the record outlives the
+  # advert it describes. A send registers instance 1 and dies before teardown;
+  # the next Wi-Fi bring-up resets the shared controller (§36) and drops every
+  # advert, ours included, while /run keeps the record; another tool registers
+  # and gets 1, the lowest free one; our next ble-adv finds 1 both listed and
+  # recorded, and removes somebody else's advert. That is #15 again, from the
+  # code meant to fix it.
+  #
+  # Nothing is leaked by dropping it. The advert the reclaim existed to clean up
+  # does not survive the next controller reset, and every bring-up causes one.
   i=1
   while [ "$i" -le "$max" ]; do
     if ! printf '%s\n' "$used" | grep -qx "$i"; then
@@ -551,6 +550,13 @@ EOF
     # Only ever removes the instance ble-adv recorded. No record means we have
     # nothing registered, and removing a guessed instance would take down
     # somebody else's advert (#15).
+    #
+    # Residual exposure, stated rather than papered over: if the controller is
+    # reset between ble-adv and here, our advert is already gone and another
+    # tool may hold that number by now. Nothing readable from btmgmt proves an
+    # instance is ours, so this cannot be closed the way the reclaim was - only
+    # kept short. ble-adv to ble-adv-stop is one send; the reclaim's window was
+    # every run since the last one that died.
     inst=$(cat "$BLE_STATE" 2>/dev/null)
     case "$inst" in
       ''|*[!0-9]*) ;;
