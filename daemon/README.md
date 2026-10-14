@@ -350,7 +350,7 @@ AIRDROP_REG="${AIRDROP_REG:-NZ}"   # your country
 | `AIRDROP_EXCL_GRACE` | `60` | Exclusive mode: seconds to stay on after a transfer finishes, so a second photo does not need the switch again. A new transfer restarts it. |
 | `AIRDROP_EXCL_IDLE` | `180` | Exclusive mode: seconds to stay on if nothing arrives at all, so a forgotten switch does not hold the Wi-Fi for long. |
 | `AIRDROP_EXCL_BUSY_MAX` | `120` | Exclusive mode: a transfer that started (an `/Ask`) but never reports finishing stops holding the switch on after this long. |
-| `AIRDROP_REG` | *(current)* | Exclusive mode: two-letter regulatory country to pin once `wpa_supplicant` is gone. Needed where the AP-derived domain has no code to re-set (e.g. `98`); without one the world domain makes ch149 no-IR and every frame is silently refused. |
+| `AIRDROP_REG` | *(current)* | Exclusive mode: two-letter regulatory country to pin once `wpa_supplicant` is gone. Needed where the AP-derived domain has no code to re-set (e.g. `98`); without one the world domain makes every 5 GHz channel no-IR, so the helper refuses to start exclusive mode (Wi-Fi is left up) unless `AIRDROP_EXCL_CHAN=6`. |
 | `AIRDROP_ALWAYS` | `0` | `1` = no BLE, stay advertising until toggled off. What the waybar switch sets. |
 | `AIRDROP_SEND_DEBUG` | unset | Set to anything to pass `-d` to opendrop on the send path, dumping each request plist under `~/.opendrop/debug`. The only way to see what went into an `/Ask` after the fact. Off by default because the dump is per-request and grows without bound. |
 | `RECV_DIR` | `~/Downloads` | Where received files land. Can be set in `~/.config/airdrop/config` instead of the environment — see below. |

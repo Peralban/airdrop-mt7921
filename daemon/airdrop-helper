@@ -502,6 +502,15 @@ EOF
       reg=$(iw reg get 2>/dev/null | awk '/^country/{sub(":","",$2); print $2; exit}')
       case "$reg" in [A-Z][A-Z]) ;; *) reg="" ;; esac
     fi
+    # No country to pin (AP sends none, e.g. "country 00", and AIRDROP_REG
+    # unset): the world domain marks every 5 GHz channel no-IR, so owl would
+    # run deaf-mute with no error anywhere (issue #7). Refuse before the
+    # teardown so the station is never lost for nothing. ch6 is allowed in
+    # the world domain and still works.
+    if [ -z "$reg" ] && [ "$chan" != 6 ]; then
+      echo "airdrop-helper: no regulatory country to pin, ch$chan would be no-IR - set AIRDROP_REG in ~/.config/airdrop/config" >&2
+      exit 1
+    fi
     if [ -d /var/service/NetworkManager ] && command -v sv >/dev/null 2>&1; then
       sv down NetworkManager >/dev/null 2>&1
     elif command -v systemctl >/dev/null 2>&1; then
