@@ -50,7 +50,7 @@ and tcpdump. waybar is optional.
    ```sh
    python3 -m venv ../owl/.venv-opendrop
    ../owl/.venv-opendrop/bin/pip install \
-     "opendrop @ git+https://github.com/jedbillyb/opendrop@e5cf1e167aadad6405e3174dd19d2915d6052d51" 'setuptools<81'
+     "opendrop @ git+https://github.com/jedbillyb/opendrop@03b4adc45d3a42659cede76d04cc93b889c2f057" 'setuptools<81'
    ```
    `setuptools<81` because OpenDrop imports `pkg_resources`. What each fix
    does: [patches/README.md](patches/README.md).

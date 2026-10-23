@@ -14,7 +14,7 @@ In the fork's order:
 ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
 upload-arms ask-confirm mdns-reannounce threaded-server url-items
 zeroconf-update-service salvage-truncated salvage-trim send-multifile
-send-status send-stall dvzip-early-end
+send-status send-stall dvzip-early-end thumbnail-small
 ```
 
 A new fix is a commit on the fork's `airdrop-mt7921` branch, then a bump of
@@ -28,6 +28,13 @@ transfer and then salvaged an upload that was already complete. The fix watches
 the dvzip as it arrives and ends the upload once the decoded cpio reaches
 `TotalBytes` and ends in `TRAILER!!!`. From cnbrown04 in
 [#34](https://github.com/jedbillyb/airdrop-mt7921/issues/34).
+
+## thumbnail-small
+
+Sends a 360 px lossy JPEG2000 thumbnail in `/Ask` instead of the 540 px
+lossless one: about 45 KB, like a real iPhone sends, instead of about 140 KB.
+With the big one, the phone dropped the `/Ask` mid-body (BrokenPipe) on the
+MT7921's lossy AWDL link before it could show the Accept prompt.
 
 ## opendrop-threaded-server.patch
 

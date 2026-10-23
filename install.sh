@@ -25,7 +25,7 @@ YES=0
 # OpenDrop 0.13.0 plus this project's iOS 26 fixes, one commit per fix, in a
 # fork. Bump OPENDROP_REF to ship a new fix; the venv rebuilds when it changes.
 OPENDROP_REPO=https://github.com/jedbillyb/opendrop
-OPENDROP_REF=e5cf1e167aadad6405e3174dd19d2915d6052d51
+OPENDROP_REF=03b4adc45d3a42659cede76d04cc93b889c2f057
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 ok()   { printf '    ok: %s\n' "$*"; }
