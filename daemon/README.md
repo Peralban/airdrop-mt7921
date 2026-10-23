@@ -50,7 +50,7 @@ harness you launch by hand for one transfer that is tolerable. For an always-on
 receiver it means **anyone in range with AirDrop set to Everyone can write files
 to this machine, unattended and unlogged.**
 
-`patches/opendrop-ask-confirm.patch` adds the hook. It is a **requirement** of
+The `ask-confirm` fix in [the OpenDrop fork](https://github.com/jedbillyb/opendrop) adds the hook. It is a **requirement** of
 the always-on design, not a nicety, and it **fails closed**: if the hook cannot
 be run, the transfer is refused. Verified:
 

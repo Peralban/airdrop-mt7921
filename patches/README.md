@@ -1,34 +1,33 @@
-# OpenDrop patches for iOS 26
+# OpenDrop fixes for iOS 26
 
-These patch OpenDrop 0.13.0 in place, inside whatever virtualenv you installed
-it into. That means they do not survive rebuilding the venv, so they live here
-and get reapplied:
+These used to be a series of patch files applied to OpenDrop 0.13.0 inside the
+venv. Since 2026-10-23 they are commits in the fork
+[jedbillyb/opendrop](https://github.com/jedbillyb/opendrop/commits/airdrop-mt7921),
+one per fix, credited to whoever wrote it, and `install.sh` installs the fork
+at a pinned commit (`OPENDROP_REF`). The code lives there; this page keeps the
+reasoning behind each fix. The section names are the old patch file names, so
+existing links still land.
 
-```sh
-cd .venv-opendrop/lib/python3.14/site-packages
-git apply /path/to/airdrop-mt7921/patches/opendrop-ios26-airdrop.patch
-```
-
-(Void has no `patch(1)` installed; `git apply` works and the patch is verified
-against it.)
-
-**They are a series, not a menu.** Each patch is made against OpenDrop 0.13.0
-with every earlier patch already applied, so they only apply in this order:
+In the fork's order:
 
 ```
 ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
 upload-arms ask-confirm mdns-reannounce threaded-server url-items
 zeroconf-update-service salvage-truncated salvage-trim send-multifile
-send-status send-stall
+send-status send-stall dvzip-early-end
 ```
 
-The install loop in the [main README](../README.md) uses exactly that order.
-Verified 2026-10-03: all seventeen apply with plain `git apply` to a clean
-`opendrop==0.13.0` from PyPI, and the result compiles. Before 2026-09-14
-`recv-window` and `threaded-server` only applied with reduced context, and
-`mdns-reannounce` did not apply at all (one hunk had turned a blank context
-line into an added one). A new patch must be generated against the tip of
-this series and added to the end of both lists.
+A new fix is a commit on the fork's `airdrop-mt7921` branch, then a bump of
+`OPENDROP_REF` in `install.sh` and the main README.
+
+## opendrop-dvzip-early-end.patch
+
+iOS 26 sends every `/Upload` chunk and then holds back the closing 0-chunk
+until it gets a reply, so the read loop sat out its 30 s stall timeout on every
+transfer and then salvaged an upload that was already complete. The fix watches
+the dvzip as it arrives and ends the upload once the decoded cpio reaches
+`TotalBytes` and ends in `TRAILER!!!`. From cnbrown04 in
+[#34](https://github.com/jedbillyb/airdrop-mt7921/issues/34).
 
 ## opendrop-threaded-server.patch
 

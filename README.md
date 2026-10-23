@@ -44,22 +44,15 @@ and tcpdump. waybar is optional.
    cmake -S ../owl -B ../owl/build -DCMAKE_BUILD_TYPE=Release
    cmake --build ../owl/build --target owl    # googletest fails under current GCC
    ```
-2. **OpenDrop**, patched. The patches are a series: apply all of them, in this
-   order, to a clean 0.13.0. `GIT_DIR` must point nowhere, because this
-   directory is inside the owl checkout and `git apply` inside a repo silently
-   patches nothing.
+2. **OpenDrop**, patched: [jedbillyb/opendrop](https://github.com/jedbillyb/opendrop)
+   is 0.13.0 with this project's iOS 26 fixes, one commit each. Use the commit
+   `install.sh` pins (`OPENDROP_REF`):
    ```sh
    python3 -m venv ../owl/.venv-opendrop
-   ../owl/.venv-opendrop/bin/pip install opendrop==0.13.0 'setuptools<81'
-   cd ../owl/.venv-opendrop/lib/python*/site-packages
-   for p in ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog \
-            upload-arms ask-confirm mdns-reannounce threaded-server url-items \
-            zeroconf-update-service salvage-truncated salvage-trim \
-            send-multifile send-status send-stall; do
-     GIT_DIR=/nonexistent git apply /path/to/airdrop-mt7921/patches/opendrop-$p.patch || break
-   done
+   ../owl/.venv-opendrop/bin/pip install \
+     "opendrop @ git+https://github.com/jedbillyb/opendrop@e5cf1e167aadad6405e3174dd19d2915d6052d51" 'setuptools<81'
    ```
-   `setuptools<81` because OpenDrop imports `pkg_resources`. What each patch
+   `setuptools<81` because OpenDrop imports `pkg_resources`. What each fix
    does: [patches/README.md](patches/README.md).
 3. **Root-owned helper, sudoers, waybar:** see
    [daemon/README.md](daemon/README.md#install).
@@ -223,7 +216,7 @@ install.sh          install and update everything
 airdrop.sh          the standalone tool
 daemon/             airdropd: the waybar switch
 waybar/             the bar module
-patches/            OpenDrop fixes for iOS 26
+patches/            what each OpenDrop fix does (code: jedbillyb/opendrop)
 docs/FINDINGS.md    the investigation
 docs/NOTES.md       lab notebook
 tools/              diagnostic scripts, one question each

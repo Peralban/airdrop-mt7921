@@ -9,7 +9,7 @@
 # time, and a `git pull` updates none of them:
 #
 #   1. owl, built from source         - an old build rejects newer flags (-S)
-#   2. the patched OpenDrop venv      - the patches live here, not in the venv
+#   2. the patched OpenDrop venv      - pinned to a commit of the fork below
 #   3. the root-owned helper and owl  - root-owned on purpose (see
 #                                       daemon/README.md), so never in the repo
 #
@@ -22,12 +22,10 @@ REPO="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 YES=0
 [ "${1:-}" = "--yes" ] && YES=1
 
-# The patch series, in order. Must match README.md and patches/README.md.
-PATCHES=(ios26-airdrop recv-window py314-send mdns-repeat find-report tls-keylog
-         upload-arms ask-confirm mdns-reannounce threaded-server url-items
-         zeroconf-update-service salvage-truncated salvage-trim
-         send-multifile send-status send-stall)
-OPENDROP_VERSION=0.13.0
+# OpenDrop 0.13.0 plus this project's iOS 26 fixes, one commit per fix, in a
+# fork. Bump OPENDROP_REF to ship a new fix; the venv rebuilds when it changes.
+OPENDROP_REPO=https://github.com/jedbillyb/opendrop
+OPENDROP_REF=e5cf1e167aadad6405e3174dd19d2915d6052d51
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 ok()   { printf '    ok: %s\n' "$*"; }
@@ -80,46 +78,33 @@ case "$owl_help" in *"invalid option"*) die "$OWL_BIN does not understand -S; is
 ok "built $OWL_BIN"
 
 # ------------------------------------------------------------- OpenDrop venv
-step "OpenDrop $OPENDROP_VERSION, patched"
+step "OpenDrop, patched (jedbillyb/opendrop ${OPENDROP_REF:0:7})"
 VENV="$OWL_DIR/.venv-opendrop"
 # Fingerprint of everything the venv is built from. Unchanged = nothing to do;
-# changed (a pull touched a patch) = rebuild from scratch, because the patches
-# are a series and do not apply on top of an older patched tree.
-want=$( { echo "$OPENDROP_VERSION $(python3 -V 2>&1)"
-          # Contents only (stdin), so moving the checkout does not force a rebuild.
-          for p in "${PATCHES[@]}"; do sha256sum < "$REPO/patches/opendrop-$p.patch"; done
-        } | sha256sum | cut -c1-16)
+# changed (a pull bumped OPENDROP_REF) = rebuild from scratch.
+want=$(echo "$OPENDROP_REF $(python3 -V 2>&1)" | sha256sum | cut -c1-16)
 have=$(cat "$VENV/.airdrop-patches" 2>/dev/null || true)
 if [ "$want" = "$have" ] && [ -x "$VENV/bin/opendrop" ]; then
   ok "already current"
 else
-  [ -n "$have" ] && ok "patches changed since the last install - rebuilding"
+  [ -n "$have" ] && ok "OpenDrop changed since the last install - rebuilding"
   rm -rf "$VENV"
   # Built at its final path: a venv's scripts hard-code it, so building
   # elsewhere and moving it in leaves a "bad interpreter" behind.
   python3 -m venv "$VENV"
   # setuptools<81: OpenDrop imports pkg_resources, which 81 removed.
-  "$VENV/bin/pip" install -q "opendrop==$OPENDROP_VERSION" 'setuptools<81' \
+  "$VENV/bin/pip" install -q "opendrop @ git+$OPENDROP_REPO@$OPENDROP_REF" 'setuptools<81' \
     || die "pip install failed"
   SITE=$(echo "$VENV"/lib/python*/site-packages)
-  for p in "${PATCHES[@]}"; do
-    # GIT_DIR points nowhere ON PURPOSE. The venv sits inside the owl checkout,
-    # and `git apply` run inside a repository applies paths relative to the
-    # repo root and SILENTLY SKIPS anything outside the current directory -
-    # exit 0, no output, nothing patched. That is how a stock OpenDrop passed
-    # for a patched one for weeks.
-    ( cd "$SITE" && GIT_DIR=/nonexistent-airdrop-install git apply \
-        "$REPO/patches/opendrop-$p.patch" ) || die "patch $p did not apply"
-  done
-  # Prove they landed, rather than trusting git apply's exit code: one marker
-  # from the first patch and one from the last.
+  # Prove the fixes landed rather than trusting pip: a stock OpenDrop once
+  # passed for a patched one for weeks. Markers from the first and last fixes.
   grep -q 'trailing CRLF of the final chunk' "$SITE/opendrop/server.py" \
-    || die "the patches did not land in $SITE (ios26-airdrop missing)"
-  grep -q 'application/x-dvzip' "$SITE/opendrop/server.py" \
-    || die "the patches did not land in $SITE (dvzip support missing)"
+    || die "$SITE has a stock OpenDrop (ios26-airdrop missing)"
+  grep -q 'not waiting for the 0-chunk' "$SITE/opendrop/server.py" \
+    || die "$SITE has an old OpenDrop (dvzip-early-end missing)"
   "$VENV/bin/python" -m py_compile "$SITE"/opendrop/*.py || die "patched OpenDrop does not compile"
   echo "$want" > "$VENV/.airdrop-patches"
-  ok "built $VENV with ${#PATCHES[@]} patches"
+  ok "built $VENV"
 fi
 
 # ------------------------------------------------------------- root copies
